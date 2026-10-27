@@ -36,6 +36,8 @@ void BeginCapture(int action);
 int Capturing();
 // Polls the keyboard during a capture; true once it has ended (bound or cancelled).
 bool PollCapture();
+// WARIO: why the last key picked was refused (already used by another action), for a few seconds; or "".
+std::string CaptureNote();
 // Keys held from a capture are ignored until they are released.
 bool Suppressed();
 void ResetDefaults();

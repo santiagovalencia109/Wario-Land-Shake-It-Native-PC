@@ -119,3 +119,8 @@ Write-Host 'Compressing...'
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 [IO.Compression.ZipFile]::CreateFromDirectory($stage, $zip, [IO.Compression.CompressionLevel]::Optimal, $false)
 Write-Host ("Release ready: {0} ({1:N1} MB)" -f $zip, ((Get-Item $zip).Length / 1MB))
+# The launcher also goes as its own release file: launchers update themselves from it
+# (https://github.com/<repo>/releases/download/v<launcher>/WarioLauncher.exe, "launcher" in version.json).
+Copy-Item -LiteralPath $launcherExe -Destination (Join-Path $dist 'WarioLauncher.exe') -Force
+Write-Host "Upload too: $(Join-Path $dist 'WarioLauncher.exe') (same release, file name WarioLauncher.exe)"
+

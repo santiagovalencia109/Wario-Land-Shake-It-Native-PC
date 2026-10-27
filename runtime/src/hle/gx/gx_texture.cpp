@@ -8,6 +8,11 @@ extern "C" unsigned g_gameAudit[8];
 
 #include <algorithm>
 #include <cstdlib>
+#include <cstdio>
+#include <vector>
+#include <string>
+#include <mutex>
+#include <functional>
 
 // Helper to write GXTexObj structure to guest memory in SDK format
 // This is needed because other code may read the structure directly
@@ -527,6 +532,90 @@ static GXTexObj* PersistentDlTexObj(const TexObjMeta& meta, GXTexWrapMode wrapS,
     return slot.get();
 }
 
+// Called right before the game calculates and draws an nw4r::lyt layout (fn_8006F32C's
+// GXSetCullMode; layoutObj = that function's r31). Layout* is at layoutObj+0x94 and its root pane at
+// Layout+0x10. Walks the pane tree: NSMBW_LOG_ORTHO dumps each distinct layout once; in full 16:9
+// (WarioFullWide) the side frame panes get their visible bit cleared, and WARIO_HIDE_PANES can list
+// more pane names to hide (debugging).
+bool WarioFullWide();
+void WarioWideLayoutDraw(uint32_t layoutObj) {
+    static const bool log = std::getenv("NSMBW_LOG_ORTHO") != nullptr;
+    static const std::string list = std::getenv("WARIO_HIDE_PANES") ? std::getenv("WARIO_HIDE_PANES") : "";
+    const bool wideSet = WarioFullWide();
+    if (!Memory::Contains(layoutObj, 0x98u)) return;
+    const uint32_t layout = Memory::Read32(layoutObj + 0x94u);
+    if (!Memory::Contains(layout, 0x14u)) return;
+    const uint32_t root = Memory::Read32(layout + 0x10u);
+    if (!Memory::Contains(root, 0xD0u)) return;
+    auto nameOf = [](uint32_t p) {
+        std::string n;
+        for (uint32_t i = 0; i < 16; ++i) {
+            const uint8_t c = Memory::Read8(p + 0xB8u + i);
+            if (c == 0) break;
+            n.push_back((c >= 32 && c < 127) ? static_cast<char>(c) : '?');
+        }
+        return n;
+    };
+    auto listed = [&](const std::string& n) {
+        if (n.empty()) return false;
+        if (wideSet && (n == "WideWindowL" || n == "WideWindowR" || n.rfind("PIC_wpaper", 0) == 0 || n == "P_InGameRoot"))
+            return true;
+        if (list.empty()) return false;
+        size_t start = 0;
+        while (true) {
+            const size_t comma = list.find(',', start);
+            if (list.compare(start, comma == std::string::npos ? std::string::npos : comma - start, n) == 0) return true;
+            if (comma == std::string::npos) return false;
+            start = comma + 1;
+        }
+    };
+    static std::vector<uint32_t> dumpedRoots;
+    const bool dump = log && std::find(dumpedRoots.begin(), dumpedRoots.end(), root) == dumpedRoots.end() && dumpedRoots.size() < 64;
+    if (dump) {
+        dumpedRoots.push_back(root);
+        std::fprintf(stderr, "[lyt] layout obj %08X layout %08X root %08X\n", layoutObj, layout, root);
+    }
+    std::function<void(uint32_t, int)> walk = [&](uint32_t p, int depth) {
+        const std::string n = nameOf(p);
+        if (dump) {
+            std::fprintf(stderr, "[lyt]   %*s'%s' flags %02X pos %.1f %.1f size %.1f x %.1f\n", depth * 2, "", n.c_str(),
+                         Memory::Read8(p + 0xB7u), Memory::ReadFloat32(p + 0x2Cu), Memory::ReadFloat32(p + 0x30u),
+                         Memory::ReadFloat32(p + 0x4Cu), Memory::ReadFloat32(p + 0x50u));
+        }
+        // The in-game mission icons are seven small layouts, each 'RootPane' > 'base' >
+        // 'NULL_sheet' > 'PIC_mission'; "base" alone is too common a name, so check the structure.
+        auto firstChildNamed = [&](uint32_t parent, const char* want) -> uint32_t {
+            const uint32_t h = parent + 0x14u;
+            uint32_t nd = Memory::Read32(h);
+            for (int g = 0; nd != h && nd != 0 && g < 32; ++g) {
+                if (!Memory::Contains(nd - 4u, 0xD0u)) break;
+                if (nameOf(nd - 4u) == want) return nd - 4u;
+                nd = Memory::Read32(nd);
+            }
+            return 0u;
+        };
+        bool missionIcon = false;
+        if (wideSet && n == "base") {
+            const uint32_t sheet = firstChildNamed(p, "NULL_sheet");
+            missionIcon = sheet != 0 && firstChildNamed(sheet, "PIC_mission") != 0;
+        }
+        if (listed(n) || missionIcon) {
+            const uint8_t f = Memory::Read8(p + 0xB7u);
+            if (f & 1u) Memory::Write8(p + 0xB7u, static_cast<uint8_t>(f & ~1u));
+            if (!dump) return;
+        }
+        if (depth >= 10) return;
+        const uint32_t head = p + 0x14u;
+        uint32_t node = Memory::Read32(head);
+        for (int guard = 0; node != head && node != 0 && guard < 128; ++guard) {
+            if (!Memory::Contains(node - 4u, 0xD0u)) break;
+            walk(node - 4u, depth + 1);
+            node = Memory::Read32(node);
+        }
+    };
+    walk(root, 0);
+}
+
 extern "C" void GX__LoadTexObj_80170f2c(uint32_t oa, uint32_t tid) {
     static uint32_t s_invalidMetaLogCount = 0;
     static uint32_t s_invalidTidLogCount = 0;
@@ -555,6 +644,31 @@ extern "C" void GX__LoadTexObj_80170f2c(uint32_t oa, uint32_t tid) {
         }
         BindUnloadableTexturePlaceholder(tid);
         return;
+    }
+
+    // NSMBW_LOG_ORTHO: who loads the 109x490 side-panel textures (finding the code that draws the
+    // widescreen frame). Logs each distinct (texture, caller chain) once.
+    static const bool logPanels = std::getenv("NSMBW_LOG_ORTHO") != nullptr;
+    if (logPanels && meta.width == 109 && meta.height == 490) {
+        static std::vector<std::vector<uint32_t>> seenPanels;
+        std::vector<uint32_t> key{meta.dataAddr};
+        char chain[128] = {};
+        if (const CpuContext* cpu = TryGetCpuContext()) {
+            uint32_t sp = cpu->gpr[1];
+            key.push_back(cpu->lr);
+            int len = std::snprintf(chain, sizeof(chain), "lr %08X", cpu->lr);
+            for (int depth = 0; depth < 8 && sp != 0 && len < 110; ++depth) {
+                uint32_t back = 0, ra = 0;
+                if (!Memory::TryRead32(sp, back) || back == 0 || !Memory::TryRead32(back + 4, ra)) break;
+                key.push_back(ra);
+                len += std::snprintf(chain + len, sizeof(chain) - len, " %08X", ra);
+                sp = back;
+            }
+        }
+        if (std::find(seenPanels.begin(), seenPanels.end(), key) == seenPanels.end() && seenPanels.size() < 32) {
+            seenPanels.push_back(key);
+            std::fprintf(stderr, "[gx] panel texture %08X tid %u %s\n", meta.dataAddr, tid, chain);
+        }
     }
 
     if (meta.dataAddr == 0 || meta.width == 0 || meta.height == 0) {

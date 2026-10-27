@@ -1,6 +1,7 @@
 {
-  "version": "0.1.0",
-  "quick_from": "0.1.0",
-  "notes_en": "First public testing build.",
-  "notes_es": "Primera versión de pruebas."
+  "version": "0.2.0",
+  "quick_from": "0.2.0",
+  "launcher": "0.2.0",
+  "notes_en": "Full 16:9 in levels (experimental, Display page): no side panels, the level fills the screen. Fixes: the globe on the map select screen is visible agai, and Wario no longer grabs a rope again right after jumping off it. Keyboard: tilt now stays put (hold E to raise the angle, Q to lower it). Rumble now works (gamepads and Wii Remote). Shake is more reliable, also on the keyboard without a gamepad. A key or button can no longer be assigned to two actions.",
+  "notes_es": "16:9 completo en los niveles (experimental, pagina Pantalla): sin paneles laterales, el nivel llena la pantalla. Arreglos: el globo de la pantalla de elegir mapa vuelve a verse y Wario ya no se vuelve a agarrar a la soga justo despues de saltar. Teclado: la inclinacion se queda fija (mantener E sube el angulo, Q lo baja). La vibracion ya funciona (mandos y Wii Remote). La sacudida es mas fiable, tambien con el teclado sin mando. Ya no se puede asignar una tecla o boton a dos acciones."
 }

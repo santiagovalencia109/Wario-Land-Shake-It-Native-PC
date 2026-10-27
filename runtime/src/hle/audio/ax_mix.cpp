@@ -1469,16 +1469,20 @@ void InitForAXOut(CpuContext* ctx) {
     Memory::Write32(g_axTaskPtr + 0x34u, kAxRequestCallback);
     if (ctx) {
         const uint32_t r13 = ctx->gpr[13];
-        Memory::Write32(g_axTaskPtr + 0x10u, Memory::Read16(r13 - 0x7bccu) /* axDspSlaveLength */);
-        Memory::Write16(g_axTaskPtr + 0x24u, Memory::Read16(r13 - 0x7bd0u) /* axDspInitVector */);
-        Memory::Write16(g_axTaskPtr + 0x26u, Memory::Read16(r13 - 0x7bceu) /* axDspResumeVector */);
+        // WARIO: offsets de __AXOutInitDSP de Wario (0x803C20D4): r13-0x530C/0x5310/0x530E (los de NSMBW eran
+        // r13-0x7BCC/0x7BD0/0x7BCE).
+        Memory::Write32(g_axTaskPtr + 0x10u, Memory::Read16(r13 - 0x530cu) /* axDspSlaveLength */);
+        Memory::Write16(g_axTaskPtr + 0x24u, Memory::Read16(r13 - 0x5310u) /* axDspInitVector */);
+        Memory::Write16(g_axTaskPtr + 0x26u, Memory::Read16(r13 - 0x530eu) /* axDspResumeVector */);
     }
     Instance().ConfigureFromTask(g_axTaskPtr);
     LinkSingleDspTask(g_axTaskPtr);
     if (ctx) {
         const uint32_t r13 = ctx->gpr[13];
-        Memory::Write32(r13 - 0x7070u, 1);
-        Memory::Write32(r13 - 0x7074u, 0);
+        // WARIO: r13-0x2988 / r13-0x298C en Wario (los de NSMBW, r13-0x7070/0x7074, caian en datos del juego,
+        // 0x8061B630/2C).
+        Memory::Write32(r13 - 0x2988u, 1);
+        Memory::Write32(r13 - 0x298cu, 0);
     }
 }
 

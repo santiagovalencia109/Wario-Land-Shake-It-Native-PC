@@ -187,6 +187,7 @@ namespace WarioLauncher
             MessageBox.Show(this, ok ? Loc.T("¡Listo! WarioRecomp.exe está compilado. Ya puedes jugar.", "Done! WarioRecomp.exe is built. You can play now.")
                                      : Loc.T("La compilación no terminó. Revisa el registro de la página Instalación (build-logs).", "The build did not finish. Check the log on the Install page (build-logs)."),
                 Text, MessageBoxButtons.OK, ok ? MessageBoxIcon.Information : MessageBoxIcon.Warning);
+            if (ok) BuildShell();  // quita el boton "Recompilar ahora" de la barra lateral
             ShowPage(ok ? 0 : 7);  // al terminar bien se activan las demas paginas
             UpdateStatus();
         }

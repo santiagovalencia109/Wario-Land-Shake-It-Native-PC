@@ -2,6 +2,7 @@
 #include "runtime_log.h"
 // gx_pixel.cpp - Pixel Processing, Blending, and Fog
 #include "gx_internal.h"
+#include <cstdlib>
 
 // ============================================================================
 // Blend Mode
@@ -84,7 +85,20 @@ PPC_NATIVE_OVERRIDE_VOID(80405E20, GX__SetZTexture_801720c0, (uint32_t op, uint3
 // ============================================================================
 
 bool GameAuroraDlRecording();
+bool WarioFullWide();
+void WarioWideApplyGlobals();
+void WarioWideLayoutDraw(uint32_t layoutObj);
 extern "C" void GX__SetCullMode_8016f3b8(uint32_t m) {
+    // fn_8006F32C sets the cull mode right before a layout is calculated and drawn: the moment to
+    // apply full 16:9 (wario_widescreen.cpp) and hide the side frame (gx_texture.cpp).
+    static const bool logLayouts = std::getenv("NSMBW_LOG_ORTHO") != nullptr;
+    static const bool hideList = std::getenv("WARIO_HIDE_PANES") != nullptr;
+    if (logLayouts || hideList || WarioFullWide()) {
+        if (const CpuContext* cpu = TryGetCpuContext(); cpu != nullptr && cpu->lr == 0x8006F348u) {
+            WarioWideApplyGlobals();
+            WarioWideLayoutDraw(cpu->gpr[31]);
+        }
+    }
     if (GameDumpFrame()) RT_LOGF(RT_TAG_GX, "[drawdump] cull %u\n", m);
     { static int n = 0; const CpuContext* x = TryGetCpuContext();
       const uint32_t lr = x ? x->lr : 0;  // mapdrv/mobjdrv live around 0x80080000-0x8008C000

@@ -50,6 +50,7 @@ struct RuntimeUserConfig {
     std::optional<bool> disableCopyFilter;
     std::optional<bool> textureReplacements;
     std::optional<bool> textureDumps;
+    std::optional<bool> fullWidescreen;  // WARIO: [video] full_widescreen, no side frame in levels
     std::optional<bool> showFps;
     std::optional<bool> spinningCoins;  // NSMBW: [video] spinning_coins, animated tiles
     std::optional<bool> frameGraph;     // NSMBW: [video] frame_graph, frame times under the FPS counter
@@ -411,7 +412,9 @@ inline void EnsureConfigFile() {
               "# unmatched texture to Cache/texture_dumps under the name a\n"
               "# replacement would need. Both are read once, at startup.\n"
               "texture_replacements = true\n"
-              "texture_dumps = false\n\n"
+              "texture_dumps = false\n"
+              "# 16:9 only: levels fill the whole screen (no side panels). Read at startup.\n"
+              "full_widescreen = false\n\n"
               "[audio]\n"
               "volume = 1.0\n"
               "music_volume = 1.0\n"
@@ -590,6 +593,7 @@ inline RuntimeUserConfig ParseConfigDocument(const toml::value& document) {
     config.vsync = FindConfigValue<bool>(document, "video", "vsync");
     config.textureReplacements = FindConfigValue<bool>(document, "video", "texture_replacements");
     config.textureDumps = FindConfigValue<bool>(document, "video", "texture_dumps");
+    config.fullWidescreen = FindConfigValue<bool>(document, "video", "full_widescreen");
     if (auto value = FindConfigUint(document, "video", "disabled_post_processing_paths");
         value && (*value & ~0x10u) == 0) {
         config.disabledPostProcessingPaths = *value & 0x10u;
@@ -1152,6 +1156,12 @@ inline bool TextureDumps(bool fallback = false) {
     return Get().textureDumps.value_or(fallback);
 }
 
+// WARIO: in 16:9, levels fill the whole screen instead of the 4:3 play area framed by side panels.
+// Read once, at startup (hle/gx/wario_widescreen.cpp).
+inline bool FullWidescreen(bool fallback = false) {
+    return Get().fullWidescreen.value_or(fallback);
+}
+
 inline uint32_t DisabledPostProcessingPaths(uint32_t fallback = 0) {
     return Get().disabledPostProcessingPaths.value_or(fallback) & 0x10u;
 }
@@ -1270,6 +1280,9 @@ inline void LogLoadedConfig() {
             }
             if (config.textureDumps) {
                 std::cout << " texture_dumps=" << (*config.textureDumps ? "true" : "false");
+            }
+            if (config.fullWidescreen) {
+                std::cout << " full_widescreen=" << (*config.fullWidescreen ? "true" : "false");
             }
             if (config.audioVolume) {
                 std::cout << " audio_volume=" << *config.audioVolume;

@@ -1009,7 +1009,8 @@ void DrawKeybindsTab(const Canvas& c) {
 #else
     const char* note = "Controllers: F10 > Controls.";
 #endif
-    Text(c, capturing >= 0 ? "Press the new key (Esc cancels)." : note, 0, -140, 20);
+    const std::string refused = Keybinds::CaptureNote();
+    Text(c, capturing >= 0 ? "Press the new key (Esc cancels)." : !refused.empty() ? refused.c_str() : note, 0, -140, 20);
     const float y = -kSettingsHeight / 2 + 43.0f;
     Button(c, "Reset Defaults", -126, y, 232, g_ui.cursor == kKeyReset, true, g_ui.frame, 26.0f);
     Button(c, "OK", 126, y, 232, g_ui.cursor == kKeyOk, true, g_ui.frame);

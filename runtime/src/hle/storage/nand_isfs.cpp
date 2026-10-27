@@ -838,15 +838,20 @@ static bool g_isfsInitialized = false;
 // These are address-exact: they name the SDK's own variables, so the numbers are
 // load-bearing and must not be "tidied". Names come from the RVL IPC/ISFS
 // sources; only the naming changed here, never a value.
+// WARIO: valores de Wario Land: Shake It! (ISFS_OpenLib en 0x803FE508, IPCGetBufferLo/Hi en 0x80407610/08,
+// r13 = 0x806226A0). Los que habia eran los de NSMBW y escribian sobre datos del juego: r13-0x6F40 cae en
+// 0x8061B760, la entrada {tipo 0, "kodaigi.brres"} del cargador del globo de "Elegir mapa"; con el tipo
+// pisado el juego no creaba el modelo y la esfera no se veia. r13-0x6F38/34/30 caian en 0x8061B768/6C/70
+// (5.0, 7.5 y 0.05 de un enemigo, fn_8011EBE4).
 namespace {
-constexpr uint32_t kIsfsFdSda1Offset = 0x7B60u;          // __fsFd
-constexpr uint32_t kIpcBufferLoSda1Offset = 0x6F24u;     // IPCBufferLo
-constexpr uint32_t kIpcBufferHiSda1Offset = 0x6F20u;     // IPCBufferHi
-constexpr uint32_t kIpcArenaLoSda1Offset = 0x6F38u;      // ISFS_OpenLib()::lo
-constexpr uint32_t kIpcArenaHiSda1Offset = 0x6F34u;      // ISFS_OpenLib()::hi
-constexpr uint32_t kIsfsHeapHandleSda1Offset = 0x6F30u;  // hId
-constexpr uint32_t kIsfsHeapBaseSda1Offset = 0x6F40u;    // ISFS heap base
-constexpr uint32_t kIsfsFirstCallSda1Offset = 0x7B5Cu;   // first-call flag: non-zero until the IPC arena is claimed
+constexpr uint32_t kIsfsFdSda1Offset = 0x5208u;          // __fsFd            (0x8061D498)
+constexpr uint32_t kIpcBufferLoSda1Offset = 0x270Cu;     // IPCBufferLo       (0x8061FF94)
+constexpr uint32_t kIpcBufferHiSda1Offset = 0x2708u;     // IPCBufferHi       (0x8061FF98)
+constexpr uint32_t kIpcArenaLoSda1Offset = 0x2780u;      // ISFS_OpenLib()::lo (0x8061FF20)
+constexpr uint32_t kIpcArenaHiSda1Offset = 0x277Cu;      // ISFS_OpenLib()::hi (0x8061FF24)
+constexpr uint32_t kIsfsHeapHandleSda1Offset = 0x2778u;  // hId               (0x8061FF28)
+constexpr uint32_t kIsfsHeapBaseSda1Offset = 0x2788u;    // ISFS heap base    (0x8061FF18)
+constexpr uint32_t kIsfsFirstCallSda1Offset = 0x5204u;   // first-call flag: non-zero until the IPC arena is claimed (0x8061D49C)
 } // namespace
 
 [[maybe_unused]] static void WriteGuestString(uint32_t address, const char* value) {

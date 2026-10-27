@@ -396,9 +396,10 @@ extern "C" uint32_t OSSetPowerCallback_801ab75c(CpuContext* ctx)
     // __OSDefaultPowerCallback in NSMBW
     constexpr uint32_t kDefaultCallbackAddr = 0x8041FB34u;
 
-    // Offsets from R13 (SDA2)
-    const uint32_t kCallbackPtrAddr = r13 - 0x7348u;
-    const uint32_t kHandlerActiveAddr = r13 - 0x7350u;
+    // Offsets from R13 (SDA2). WARIO: los de OSSetPowerCallback de Wario (0x8041F644): callback en r13-0x2598,
+    // "evento pedido" en r13-0x25A0 (los de NSMBW, r13-0x7348/0x7350, caian en datos del juego, 0x8061B358/50).
+    const uint32_t kCallbackPtrAddr = r13 - 0x2598u;
+    const uint32_t kHandlerActiveAddr = r13 - 0x25A0u;
 
     RT_LOG(RT_TAG_OS) << "OSSetPowerCallback_801ab75c called: newCB=0x"
               << std::hex << newCallback << std::dec << std::endl;
@@ -492,9 +493,11 @@ extern "C" int32_t IPCCltInit_80193478(CpuContext* ctx)
     InvokeIndirectCpu(0x8040759Cu, ctx);
 
     // Advance the buffer lo pointer by 0x1000 (iosHeap size), matching real IPCCltInit.
-    uint32_t bufferLo = Memory::Read32(ctx->gpr[13] - 0x6F24u);
+    // WARIO: IPCBufferLo esta en r13-0x270C (IPCGetBufferLo, 0x80407610); el de NSMBW (r13-0x6F24) caia en
+    // datos del juego (0x8061B77C).
+    uint32_t bufferLo = Memory::Read32(ctx->gpr[13] - 0x270Cu);
     uint32_t newBufLo = bufferLo + 0x1000; // Advance by 4KB for iosHeap
-    Memory::Write32(ctx->gpr[13] - 0x6F24u, newBufLo);
+    Memory::Write32(ctx->gpr[13] - 0x270Cu, newBufLo);
     
     RT_LOG(RT_TAG_OS) << "IPCCltInit: IPC buffer lo advanced from 0x" << std::hex << bufferLo
               << " to 0x" << newBufLo << std::dec << std::endl;

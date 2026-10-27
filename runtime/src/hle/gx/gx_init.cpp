@@ -83,6 +83,9 @@ extern "C" uint32_t GX__Init_8016b850(uint32_t fifoBase, uint32_t fifoSize)
 
     __GX__SetTmemConfig_80171458(2);
 
+    // WARIO: la activacion de las matrices de post-transformacion (XF 0x1012 = 1, que la GXInit original hace en
+    // __GXInitRevisionBits, aqui un stub) la hace la GXInit de aurora (GXManage.cpp).
+
     RT_LOGF(RT_TAG_GX, "GX initialized, FIFO at 0x%08X (base=0x%08X size=0x%08X)\n",
             kFifoObjAddr, fifoBase, fifoSize);
 

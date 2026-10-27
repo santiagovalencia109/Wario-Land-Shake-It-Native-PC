@@ -4,6 +4,7 @@
 #include "gx_internal.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <utility>
@@ -45,14 +46,40 @@ namespace {
 // Viewport and scissor go to aurora in guest EFB coordinates, mapped to the active render target
 // exactly once inside gx::map_logical_viewport/map_logical_scissor. A prior VI origin/scale
 // transform double-transformed menu viewports and broke 640x480 overscan, so it was removed.
+// NSMBW_LOG_ORTHO also logs each distinct viewport / scissor with its caller chain (finding how the
+// game frames its 4:3 play area inside the 16:9 screen).
+static void LogDistinctRect(const char* kind, float l, float t, float w, float h) {
+    static const bool enabled = std::getenv("NSMBW_LOG_ORTHO") != nullptr;
+    if (!enabled) return;
+    static std::vector<std::pair<const char*, std::vector<int>>> seen;
+    std::vector<int> key{static_cast<int>(l), static_cast<int>(t), static_cast<int>(w), static_cast<int>(h)};
+    for (const auto& e : seen) if (e.first == kind && e.second == key) return;
+    if (seen.size() >= 96) return;
+    seen.emplace_back(kind, key);
+    char chain[96] = {};
+    if (const CpuContext* cpu = TryGetCpuContext()) {
+        uint32_t sp = cpu->gpr[1];
+        int len = std::snprintf(chain, sizeof(chain), "lr %08X", cpu->lr);
+        for (int depth = 0; depth < 5 && sp != 0 && len < 80; ++depth) {
+            uint32_t back = 0, ra = 0;
+            if (!Memory::TryRead32(sp, back) || back == 0 || !Memory::TryRead32(back + 4, ra)) break;
+            len += std::snprintf(chain + len, sizeof(chain) - len, " %08X", ra);
+            sp = back;
+        }
+    }
+    std::fprintf(stderr, "[gx] %s %.1f %.1f %.1f x %.1f %s\n", kind, l, t, w, h, chain);
+}
+
 extern "C" void GX__SetViewportJitter_80173378(float l, float t, float w, float h, float nz, float fz, uint32_t f) {
     g_viewportState[0]=l; g_viewportState[1]=t; g_viewportState[2]=w; g_viewportState[3]=h; g_viewportState[4]=nz; g_viewportState[5]=fz;
+    LogDistinctRect("viewport", l, t, w, h);
     GXSetViewportJitter(l, t, w, h, nz, fz, f);
 }
 PPC_NATIVE_OVERRIDE_VOID(80406BA4, GX__SetViewportJitter_80173378, (float l, float t, float w, float h, float nz, float fz, uint32_t f), (l, t, w, h, nz, fz, f));
 
 extern "C" void GX__SetViewport_801733b4(float l, float t, float w, float h, float nz, float fz) {
     g_viewportState[0]=l; g_viewportState[1]=t; g_viewportState[2]=w; g_viewportState[3]=h; g_viewportState[4]=nz; g_viewportState[5]=fz;
+    LogDistinctRect("viewport", l, t, w, h);
     GXSetViewport(l, t, w, h, nz, fz);
 }
 PPC_NATIVE_OVERRIDE_VOID(80406BE0, GX__SetViewport_801733b4, (float l, float t, float w, float h, float nz, float fz), (l, t, w, h, nz, fz));
@@ -107,7 +134,13 @@ PPC_NATIVE_OVERRIDE_VOID(80406C74, GX__SetScissorBoxOffset_801734e0, (int32_t xo
 // Scissor
 // ============================================================================
 
+bool WarioFullWide();
 extern "C" void GX__SetScissor_80173430(uint32_t l, uint32_t t, uint32_t w, uint32_t h) {
+    // Full 16:9 (wario_widescreen.cpp): the stage camera (applied from 0x80369C04) clips the level
+    // to a 4:3 window, 480 x 480 centred in the 640x480 anamorphic EFB; open it to the whole screen.
+    if (l == 80u && t == 0u && w == 480u && h == 480u && WarioFullWide()) {
+        if (const CpuContext* cpu = TryGetCpuContext(); cpu != nullptr && cpu->lr == 0x80369C04u) { l = 0u; w = 640u; }
+    }
     g_scissorLeft=(int32_t)l; g_scissorTop=(int32_t)t; g_scissorWidth=(int32_t)w; g_scissorHeight=(int32_t)h;
     try { uint32_t gd=Memory::Read32(kGXDataPtrAddr); if(gd){
         uint32_t r148=Memory::Read32(gd+0x148), r14c=Memory::Read32(gd+0x14c);
@@ -119,6 +152,7 @@ extern "C" void GX__SetScissor_80173430(uint32_t l, uint32_t t, uint32_t w, uint
     // No viewport replay here: aurora recomputes viewport and scissor together
     // on every scissor change (set_logical_scissor -> apply_logical_render_state),
     // so re-issuing the current viewport would be duplicate work.
+    LogDistinctRect("scissor", (float)l, (float)t, (float)w, (float)h);
     GXSetScissor(l, t, w, h);
 }
 PPC_NATIVE_OVERRIDE_VOID(80406C0C, GX__SetScissor_80173430, (uint32_t l, uint32_t t, uint32_t w, uint32_t h), (l, t, w, h));
@@ -126,6 +160,64 @@ PPC_NATIVE_OVERRIDE_VOID(80406C0C, GX__SetScissor_80173430, (uint32_t l, uint32_
 // ============================================================================
 // Projection
 // ============================================================================
+
+// Experiment tools (env vars, off by default):
+//  NSMBW_LOG_ORTHO  also logs each distinct (projection, caller lr) pair with its call chain;
+//  WARIO_HIDE_LR    comma-separated caller lr values (hex): projections set from those callers are
+//                   pushed off-screen, hiding what they draw (finding the side panels' layer).
+static std::vector<uint32_t> HideCallers() {
+    std::vector<uint32_t> out;
+    if (const char* env = std::getenv("WARIO_HIDE_LR")) {
+        const char* c = env;
+        while (*c) {
+            char* end = nullptr;
+            const unsigned long v = std::strtoul(c, &end, 16);
+            if (end == c) { ++c; continue; }
+            out.push_back(static_cast<uint32_t>(v));
+            c = end;
+        }
+    }
+    return out;
+}
+
+static const float* DebugProjection(const float* m, uint32_t pt, float* scratch) {
+    static const bool log = std::getenv("NSMBW_LOG_ORTHO") != nullptr;
+    static const std::vector<uint32_t> hide = HideCallers();
+    static const bool hideHudEnv = std::getenv("WARIO_HIDE_HUD") != nullptr;
+    if (!log && hide.empty() && !hideHudEnv) return m;
+    const CpuContext* cpu = TryGetCpuContext();
+    const uint32_t lr = cpu ? cpu->lr : 0;
+    if (log && m[0] != 0.f && m[5] != 0.f) {
+        static std::vector<std::vector<int>> seen;
+        std::vector<int> key{static_cast<int>(pt), static_cast<int>(2.f / m[0]), static_cast<int>(2.f / m[5]), static_cast<int>(lr)};
+        if (std::find(seen.begin(), seen.end(), key) == seen.end() && seen.size() < 128) {
+            seen.push_back(key);
+            char chain[96] = {};
+            if (cpu != nullptr) {
+                uint32_t sp = cpu->gpr[1];
+                int len = std::snprintf(chain, sizeof(chain), "lr %08X", lr);
+                for (int depth = 0; depth < 5 && sp != 0 && len < 80; ++depth) {
+                    uint32_t back = 0, ra = 0;
+                    if (!Memory::TryRead32(sp, back) || back == 0 || !Memory::TryRead32(back + 4, ra)) break;
+                    len += std::snprintf(chain + len, sizeof(chain) - len, " %08X", ra);
+                    sp = back;
+                }
+            }
+            if (pt == GX_ORTHOGRAPHIC)
+                std::fprintf(stderr, "[gx] proj ortho %.0f x %.0f (offset %.1f, %.1f) %s\n", 2.f / m[0], 2.f / m[5], -m[3] / m[0], -m[7] / m[5], chain);
+            else
+                std::fprintf(stderr, "[gx] proj persp aspect %.3f m2 %.3f %s\n", m[5] / m[0], m[2], chain);
+        }
+    }
+    // WARIO_HIDE_HUD: hide everything drawn with the 16:9 pixel-space ortho (HUD, side panels and
+    // whatever masks them), leaving the stage (drawn in game units) on screen.
+    static const bool hideHud = std::getenv("WARIO_HIDE_HUD") != nullptr;
+    const bool hudOrtho = pt == GX_ORTHOGRAPHIC && m[0] != 0.f && std::abs(2.f / m[0] - 853.3f) < 4.f;
+    if (!(hideHud && hudOrtho) && std::find(hide.begin(), hide.end(), lr) == hide.end()) return m;
+    std::copy(m, m + 16, scratch);
+    if (pt == GX_ORTHOGRAPHIC) { scratch[3] = 10.f; } else { scratch[0] = 0.f; scratch[2] = 10.f; }
+    return scratch;
+}
 
 extern "C" void GX__SetProjection_8017301c(uint32_t ma, uint32_t pt) {
     const uint32_t* raw=(const uint32_t*)GuestToHostPtr(ma, 64); float m[16];
@@ -172,7 +264,8 @@ extern "C" void GX__SetProjection_8017301c(uint32_t ma, uint32_t pt) {
         const CpuContext* c = TryGetCpuContext();
         RT_LOGF(RT_TAG_GX, "[drawdump] setproj type %u m0 %.4f m5 %.4f m2 %.4f m6 %.4f m10 %.4f m11 %.4f m14 %.4f lr %08X\n", pt, m[0], m[5], m[2], m[6], m[10], m[11], m[14], c ? c->lr : 0);
     }
-    GXSetProjection(m, (GXProjectionType)pt);
+    float hidden[16];
+    GXSetProjection(DebugProjection(m, pt, hidden), (GXProjectionType)pt);
     UpdateProjectionVectorFromMatrix(m, (GXProjectionType)pt);
 }
 PPC_NATIVE_OVERRIDE_VOID(80406848, GX__SetProjection_8017301c, (uint32_t ma, uint32_t pt), (ma, pt));
@@ -224,7 +317,8 @@ extern "C" void GX__SetProjectionv_80173080(uint32_t pa) {
     float m[16]={0.f}; m[0]=v[1]; m[5]=v[3]; m[10]=v[5]; m[11]=v[6];
     if(pt==GX_PERSPECTIVE){ m[2]=v[2]; m[6]=v[4]; m[14]=-1.f; } else { m[3]=v[2]; m[7]=v[4]; m[15]=1.f; }
     if (GameDumpFrame()) RT_LOGF(RT_TAG_GX, "[drawdump] setprojv type %d %.4f %.4f %.4f %.4f %.4f %.4f\n", pt == GX_ORTHOGRAPHIC ? 1 : 0, v[1], v[2], v[3], v[4], v[5], v[6]);
-    GXSetProjection(m, pt);
+    float hidden[16];
+    GXSetProjection(DebugProjection(m, pt, hidden), pt);
     UpdateProjectionVectorFromProjV(v);
 }
 PPC_NATIVE_OVERRIDE_VOID(804068AC, GX__SetProjectionv_80173080, (uint32_t pa), (pa));

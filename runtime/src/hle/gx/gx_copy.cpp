@@ -12,6 +12,7 @@ extern "C" void WarioIntroButtons(uint32_t hold);
 #include <algorithm>
 #include <chrono>
 #include <cstdio>
+#include <cstdlib>
 #include <string>
 #include <map>
 #include <mutex>
@@ -164,6 +165,20 @@ PPC_NATIVE_OVERRIDE_VOID(80403B30, GX__CopyDisp_8016fc38, (uint32_t da, uint32_t
 
 
 extern "C" void GX__CopyTex_8016fd74(uint32_t da, uint32_t c) {
+    // NSMBW_LOG_ORTHO also logs each distinct EFB-to-texture copy (source rect, destination size,
+    // format, clear) with its caller (finding a play area rendered to a texture).
+    static const bool logCopies = std::getenv("NSMBW_LOG_ORTHO") != nullptr;
+    if (logCopies) {
+        static std::vector<std::vector<uint32_t>> seenCopies;
+        const CpuContext* cpu = TryGetCpuContext();
+        std::vector<uint32_t> key{g_texCopyState.srcLeft, g_texCopyState.srcTop, g_texCopyState.srcWidth, g_texCopyState.srcHeight,
+                                  g_texCopyState.dstWidth, g_texCopyState.dstHeight, g_texCopyState.dstFormat, c, cpu ? cpu->lr : 0u};
+        if (std::find(seenCopies.begin(), seenCopies.end(), key) == seenCopies.end() && seenCopies.size() < 64) {
+            seenCopies.push_back(key);
+            std::fprintf(stderr, "[gx] copytex src %u %u %u x %u -> %u x %u fmt %u clear %u dst %08X lr %08X\n", key[0], key[1], key[2], key[3],
+                         key[4], key[5], key[6], c, da, key[8]);
+        }
+    }
     EnsureAuroraFrameActive();
     // Match GX FIFO ordering: texture copies observe all prior draws.
     GXDrawDone();

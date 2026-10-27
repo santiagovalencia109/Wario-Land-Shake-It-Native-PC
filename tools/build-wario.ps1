@@ -58,6 +58,51 @@ Set-Status (L "compilacion iniciada en $root con $Jobs procesos ($shardJobs para
 # Any error ends up in status.txt (the launcher shows it).
 trap { Set-Status ("ERROR: " + $_.Exception.Message); exit 1 }
 
+# Launcher self-update for launchers that cannot do it themselves (0.1.0 updates only the code and then runs
+# this script). version.json "launcher" names the launcher version of that release; when the launcher next to
+# the code is older, WarioLauncher.exe is downloaded from that release's files (tag v<launcher>). The running
+# launcher is renamed to WarioLauncher.old.exe (a running .exe can be renamed, not deleted) and the new one
+# takes its name; it is used from the next start, and the new launcher deletes the .old.exe. Never fatal.
+function Update-LauncherBinary {
+    $vj = Join-Path $root 'version.json'
+    if (-not (Test-Path -LiteralPath $vj)) { return }
+    $json = Get-Content -Raw -LiteralPath $vj
+    $want = [regex]::Match($json, '"launcher"\s*:\s*"([^"]+)"').Groups[1].Value
+    if (-not $want) { return }
+    $exe = $null
+    $proc = Get-Process WarioLauncher -ErrorAction SilentlyContinue | Where-Object { $_.Path } | Select-Object -First 1
+    if ($proc -and ($proc.Path.StartsWith($root, [StringComparison]::OrdinalIgnoreCase))) { $exe = $proc.Path }
+    if (-not $exe) { foreach ($c in @((Join-Path $root 'WarioLauncher.exe'), (Join-Path $play 'WarioLauncher.exe'))) { if (Test-Path -LiteralPath $c) { $exe = $c; break } } }
+    if (-not $exe) { return }
+    $have = [version]'0.0.0'
+    try { $fv = [version](Get-Item -LiteralPath $exe).VersionInfo.FileVersion; $have = [version]::new($fv.Major, $fv.Minor, [Math]::Max(0, $fv.Build)) } catch { }
+    $w = [version]$want; $w = [version]::new($w.Major, $w.Minor, [Math]::Max(0, $w.Build))
+    if ($have -ge $w) { return }
+    $repo = 'santiagovalencia109/Wario-Land-Shake-It-Native-PC'
+    $ini = Join-Path $play 'UserData\launcher.ini'
+    if (Test-Path -LiteralPath $ini) {
+        $m = Select-String -LiteralPath $ini -Pattern '^\s*update_repo\s*=\s*(.+)$' | Select-Object -First 1
+        if ($m) { $repo = $m.Matches[0].Groups[1].Value.Trim() }
+    }
+    $dir = Split-Path -Parent $exe
+    $fresh = Join-Path $dir 'WarioLauncher.new.exe'
+    $old = Join-Path $dir 'WarioLauncher.old.exe'
+    try {
+        [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+        Invoke-WebRequest -UseBasicParsing -Uri "https://github.com/$repo/releases/download/v$want/WarioLauncher.exe" -OutFile $fresh -Headers @{ 'User-Agent' = 'WarioLauncher' }
+        $bytes = [IO.File]::ReadAllBytes($fresh)
+        if ($bytes.Length -lt 100000 -or $bytes[0] -ne 0x4D -or $bytes[1] -ne 0x5A) { throw 'not an executable' }
+        if (Test-Path -LiteralPath $old) { Remove-Item -LiteralPath $old -Force }
+        Move-Item -LiteralPath $exe -Destination $old
+        try { Move-Item -LiteralPath $fresh -Destination $exe } catch { Move-Item -LiteralPath $old -Destination $exe; throw }
+        Set-Status (L "launcher actualizado a $want (se usa al volver a abrirlo)" "launcher updated to $want (used from the next start)")
+    } catch {
+        Remove-Item -LiteralPath $fresh -ErrorAction SilentlyContinue
+        Set-Status (L "aviso: no se pudo actualizar el launcher ($($_.Exception.Message)); baja el zip $want de GitHub" "warning: could not update the launcher ($($_.Exception.Message)); download the $want zip from GitHub")
+    }
+}
+Update-LauncherBinary
+
 # 0. Game: main.dol and the extracted data (used in place; the disc files are not copied)
 $cfgPath = Join-Path $play 'UserData\Config.toml'
 if (-not $GameData -and (Test-Path -LiteralPath $cfgPath)) {
@@ -164,6 +209,12 @@ $cfg = Join-Path $play 'UserData\Config.toml'
 if (-not (Test-Path -LiteralPath $cfg) -and $GameData) {
     $escaped = $GameData -replace '\\', '\\'
     Set-Content -LiteralPath $cfg -Value "[paths]`ndvd_root = `"$escaped`"`n" -Encoding utf8
+}
+# The launcher compares this with version.json to tell whether the program is older than the code.
+$versionJson = Join-Path $root 'version.json'
+if (Test-Path -LiteralPath $versionJson) {
+    $builtVersion = [regex]::Match((Get-Content -Raw -LiteralPath $versionJson), '"version"\s*:\s*"([^"]+)"').Groups[1].Value
+    if ($builtVersion) { Set-Content -LiteralPath (Join-Path $play 'built_version.txt') -Value $builtVersion -Encoding ascii -NoNewline }
 }
 Set-Status (L 'copiado a Play\WarioRecomp.exe' 'copied to Play\WarioRecomp.exe')
 if (-not $SkipRun) {

@@ -112,10 +112,21 @@ namespace WarioLauncher
             _side.Controls.Add(lang);
             _side.Controls.Add(new Label
             {
-                Dock = DockStyle.Bottom, Height = Dpi.S(26), Text = "v" + CodeVersion + (_root != null && NeedsRebuild ? "  ⚠ " + Loc.T("recompilar", "rebuild") : ""),
+                Dock = DockStyle.Bottom, Height = Dpi.S(26), Text = "v" + CodeVersion,
                 ForeColor = Theme.Muted, BackColor = Theme.Side, Font = Theme.UI(8.5f),
                 TextAlign = ContentAlignment.MiddleCenter,
             });
+            // The code is newer than the built program (an update or a new release): a gold button that
+            // can't be missed, taking the player straight to Install.
+            if (_root != null && NeedsRebuild)
+            {
+                var rebuild = new FlatBtn("⚠  " + Loc.T("Recompilar ahora", "Rebuild now"), true)
+                {
+                    AutoSize = false, Dock = DockStyle.Bottom, Height = Dpi.S(44), Font = Theme.UI(10.5f, FontStyle.Bold),
+                };
+                rebuild.Click += (s, e) => ShowPage(InstallPageIndex);
+                _side.Controls.Add(rebuild);
+            }
 
             var hint = new Label
             {
@@ -292,6 +303,17 @@ namespace WarioLauncher
             }));
         }
 
+        private const int InstallPageIndex = 7;  // ShowPage: case 7 = BuildInstall
+
+        // The port's headline feature: the original game never let levels fill a 16:9 screen.
+        private void FullWidescreenCheck(Page p)
+        {
+            p.Check(Loc.T("★ 16:9 real en los niveles (experimental)", "★ True 16:9 in levels (experimental)"), _cfg.GetBool("video", "full_widescreen", false),
+                v => Write(t => t.SetBool("video", "full_widescreen", v)),
+                Loc.T("Novedad del port: quita los paneles laterales y el nivel llena toda la pantalla, algo que el juego original nunca permitió. Desactivada: los paneles originales. Solo con 16:9, Llenar o Cinemático; se aplica al iniciar el juego.",
+                      "New in this port: removes the side panels so the level fills the whole screen, something the original game never allowed. Off: the original panels. Only with 16:9, Fill or Cinematic; applies when the game starts."));
+        }
+
         private DarkCombo IntroCombo()
         {
             var items = new[]
@@ -328,6 +350,7 @@ namespace WarioLauncher
             p.Row(Loc.T("Resolución interna", "Render resolution"), ScaleCombo());
             p.Row(Loc.T("Relación de aspecto", "Aspect ratio"), AspectCombo());
             p.Row(Loc.T("Intro", "Intro"), IntroCombo());
+            FullWidescreenCheck(p);
             p.Section(Loc.T("Estado", "Status"));
             string dvd = _cfg.GetString("paths", "dvd_root", "");
             bool okGame = GameFolderOk(dvd, out string why);
@@ -361,6 +384,7 @@ namespace WarioLauncher
             p.Row(Loc.T("Relación de aspecto", "Aspect ratio"), AspectCombo(),
                 Loc.T("16:9 y Llenar hacen que el juego dibuje en panorámico (más escenario a los lados).",
                       "16:9 and Fill make the game draw widescreen (more of the level at the sides)."));
+            FullWidescreenCheck(p);
             p.Check(Loc.T("Sincronización vertical (VSync)", "Vertical sync (VSync)"), _cfg.GetBool("video", "vsync", true),
                 v => Write(t => t.SetBool("video", "vsync", v)),
                 Loc.T("Desactivada puede haber cortes en la imagen (tearing).", "Off can show tearing."));
@@ -494,6 +518,10 @@ namespace WarioLauncher
                 Reshow(5);
             }), Loc.T("El port detecta el tipo de mando solo; aquí eliges cuál configurar.", "The port detects the pad type itself; here you pick which one to set up."));
             p.Check(Loc.T("Vibración", "Rumble"), _cfg.GetBool("controller", "rumble", true), v => Write(t => t.SetBool("controller", "rumble", v)));
+            int rumble;
+            if (!int.TryParse(_cfg.GetString("gamepad", "wario_rumble_strength", "100"), out rumble)) rumble = 100;
+            p.Slider(Loc.T("Intensidad de la vibración", "Rumble strength"), Math.Max(0, Math.Min(100, rumble)),
+                v => Write(t => { if (v == 100) t.Remove("gamepad", "wario_rumble_strength"); else t.SetString("gamepad", "wario_rumble_strength", v.ToString(CultureInfo.InvariantCulture)); }));
 
             p.Section(Loc.T("Movimiento (Wii Remote de lado)", "Motion (sideways Wii Remote)"));
             var stickModes = new[]
@@ -519,6 +547,54 @@ namespace WarioLauncher
             p.Section(Loc.T("Asignación", "Mapping"));
             p.ControlsHeader(Loc.T("ACCIÓN", "ACTION"), Loc.T("TECLADO", "KEYBOARD"), Loc.T("MANDO", "GAMEPAD"));
             string styleName = Bindings.Styles[style];
+            // Una tecla o un boton solo puede tener una accion: se rechaza asignar uno que ya este en uso.
+            var keyBoxes = new List<KeyValuePair<KeyCapture, string>>();
+            var padBoxes = new List<KeyValuePair<DarkCombo, string>>();
+            var padExtras = new List<KeyValuePair<string, string>>();
+            Label conflictInfo = null;
+            Action<string> warn = msg => { if (conflictInfo != null) { conflictInfo.Text = msg; conflictInfo.ForeColor = Color.FromArgb(255, 110, 110); } };
+            string PadValue(DarkCombo c) => c.SelectedItem is Choice ch ? (string)ch.Value : "";
+            string KeyOwner(KeyCapture self, string name)
+            {
+                foreach (var kb in keyBoxes)
+                    if (kb.Key != self && string.Equals(kb.Key.Value, name, StringComparison.OrdinalIgnoreCase)) return kb.Value;
+                return null;
+            }
+            string PadOwner(DarkCombo self, string value)
+            {
+                if (value.Length == 0) return null;
+                foreach (var pb in padBoxes) if (pb.Key != self && PadValue(pb.Key) == value) return pb.Value;
+                string selfLabel = padBoxes.FirstOrDefault(pb => pb.Key == self).Value;
+                foreach (var pe in padExtras) if (pe.Key == value && pe.Value != selfLabel) return pe.Value;
+                return null;
+            }
+            void MarkConflicts()
+            {
+                var dup = new List<string>();
+                foreach (var kb in keyBoxes)
+                {
+                    string other = kb.Key.Value.Length > 0 ? KeyOwner(kb.Key, kb.Key.Value) : null;
+                    kb.Key.ForeColor = other != null ? Color.FromArgb(255, 110, 110) : Theme.Text;
+                    if (other != null && !dup.Contains(kb.Key.Value)) dup.Add(kb.Key.Value);
+                }
+                foreach (var pb in padBoxes)
+                {
+                    string v = PadValue(pb.Key);
+                    string other = PadOwner(pb.Key, v);
+                    pb.Key.ForeColor = other != null ? Color.FromArgb(255, 110, 110) : Theme.Text;
+                    pb.Key.Invalidate();
+                    string shown = Bindings.PadLabel(v, style);
+                    if (other != null && !dup.Contains(shown)) dup.Add(shown);
+                }
+                if (conflictInfo == null) return;
+                if (dup.Count > 0)
+                    warn(Loc.T("Asignadas a más de una acción (en rojo): ", "Assigned to more than one action (in red): ") + string.Join(", ", dup.ToArray()) +
+                         Loc.T(". Cambia o borra una de ellas.", ". Change or clear one of them."));
+                else { conflictInfo.Text = ""; }
+            }
+            KeyCapture.Rejected -= _keyRejected;
+            _keyRejected = msg => warn(msg);
+            KeyCapture.Rejected += _keyRejected;
             foreach (var a in Bindings.Actions)
             {
                 var act = a;
@@ -537,6 +613,19 @@ namespace WarioLauncher
                     Write(t => { if (joined == act.KeyboardDefault) t.Remove("keyboard", act.Key); else t.SetString("keyboard", act.Key, joined); });
                 };
                 k1.Changed += saveKeys; k2.Changed += saveKeys;
+                string actLabel = Loc.English ? a.En : a.Es;
+                foreach (var kc in new[] { k1, k2 })
+                {
+                    var self = kc;
+                    self.Validate = name =>
+                    {
+                        string owner = KeyOwner(self, name);
+                        return owner == null ? null : Loc.T("La tecla " + name + " ya está asignada a «" + owner + "». Bórrala allí primero (clic derecho).",
+                                                            "The " + name + " key is already assigned to “" + owner + "”. Clear it there first (right-click).");
+                    };
+                    self.Changed += () => MarkConflicts();
+                    keyBoxes.Add(new KeyValuePair<KeyCapture, string>(self, actLabel));
+                }
 
                 var options = Bindings.PadInputs.Select(i => new Choice(Bindings.PadLabel(i, style), i)).ToArray();
                 // Entradas que no estan en la lista (escritas a mano) se conservan como una opcion mas.
@@ -559,13 +648,41 @@ namespace WarioLauncher
                     string joined = string.Join(",", l.ToArray());
                     Write(t => { if (joined == act.PadDefault[style]) t.Remove("gamepad", padKey); else t.SetString("gamepad", padKey, joined); });
                 };
-                p1.SelectedIndexChanged += savePad; p2.SelectedIndexChanged += savePad;
+                foreach (var pc in new[] { p1, p2 })
+                {
+                    var self = pc;
+                    self.Tag = PadValue(self);
+                    bool reverting = false;
+                    self.SelectedIndexChanged += (s2, e2) =>
+                    {
+                        if (reverting) return;
+                        string v = PadValue(self);
+                        string owner = PadOwner(self, v);
+                        if (owner != null)
+                        {
+                            reverting = true;
+                            string prev = (string)self.Tag;
+                            foreach (var it in self.Items) if ((string)((Choice)it).Value == prev) { self.SelectedItem = it; break; }
+                            reverting = false;
+                            warn(Loc.T(Bindings.PadLabel(v, style) + " ya está asignado a «" + owner + "». Quítalo allí primero.",
+                                       Bindings.PadLabel(v, style) + " is already assigned to “" + owner + "”. Remove it there first."));
+                            return;
+                        }
+                        self.Tag = v;
+                        savePad(s2, e2);
+                        MarkConflicts();
+                    };
+                    padBoxes.Add(new KeyValuePair<DarkCombo, string>(self, actLabel));
+                }
+                foreach (string x in extra) padExtras.Add(new KeyValuePair<string, string>(x, actLabel));
                 string label = Loc.English ? a.En : a.Es;
                 if (extra.Count > 0) label += "  (+" + string.Join(", ", extra.Select(x => Bindings.PadLabel(x, style)).ToArray()) + ")";
                 p.ControlsRow(label, k1, k2, p1, p2);
             }
-            p.Info(Loc.T("Clic en una casilla del teclado y pulsa la tecla; clic derecho la borra. Los cambios se aplican al abrir el juego.",
-                         "Click a keyboard box and press the key; right-click clears it. Changes apply when the game starts."), Theme.Muted);
+            p.Info(Loc.T("Clic en una casilla del teclado y pulsa la tecla; clic derecho la borra. Una tecla o botón ya asignado no se puede repetir. Los cambios se aplican al abrir el juego.",
+                         "Click a keyboard box and press the key; right-click clears it. A key or button already in use can't be assigned again. Changes apply when the game starts."), Theme.Muted);
+            conflictInfo = p.Info(" ", Theme.Muted);
+            MarkConflicts();
             p.Buttons(
                 new KeyValuePair<string, Action>(Loc.T("Restaurar teclado", "Reset keyboard"), () =>
                 {
@@ -878,6 +995,8 @@ namespace WarioLauncher
             if (KeyCapture.Active != null) { KeyCapture.Active.Deliver(keyData); return true; }
             return base.ProcessCmdKey(ref msg, keyData);
         }
+
+        private Action<string> _keyRejected;
 
         // ---- ayuda para combos ----
         private static DarkCombo Combo(Choice[] items, Choice selected, Action<object> onChange, int width = 300)

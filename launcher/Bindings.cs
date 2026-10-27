@@ -23,8 +23,8 @@ namespace WarioLauncher
             A("run", "Correr / Atacar (botón 1)", "Run / Attack (1 button)", "Z,Left Shift", "b,x", "b,x", "x"),
             A("a", "Botón A", "A button", "A", "y", "y", "y"),
             A("shake", "Sacudir", "Shake", "C,Left Ctrl", "lefttrigger,righttrigger", "lefttrigger,righttrigger", "lefttrigger,righttrigger"),
-            A("tilt_left", "Inclinar a la izquierda", "Tilt left", "Q", "leftshoulder", "leftshoulder", "leftshoulder"),
-            A("tilt_right", "Inclinar a la derecha", "Tilt right", "E", "rightshoulder", "rightshoulder", "rightshoulder"),
+            A("tilt_left", "Inclinar a la izquierda (teclado: bajar ángulo)", "Tilt left (keyboard: lower angle)", "Q", "leftshoulder", "leftshoulder", "leftshoulder"),
+            A("tilt_right", "Inclinar a la derecha (teclado: subir ángulo)", "Tilt right (keyboard: raise angle)", "E", "rightshoulder", "rightshoulder", "rightshoulder"),
             A("plus", "+ (Pausa)", "+ (Pause)", "Return,Escape", "start", "start", "start"),
             A("minus", "− (Menos)", "− (Minus)", "-,Tab", "back", "back", "back"),
         };

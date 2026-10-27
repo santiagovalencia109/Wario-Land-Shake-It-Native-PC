@@ -15,6 +15,11 @@ emulator**: the Wii system libraries (video, audio, controllers, disc, saves) ar
   <img src="screenshots/game-3.png" width="32%" alt="A level">
 </p>
 <p align="center">
+  <img src="screenshots/game-16x9-1.png" width="48%" alt="Full 16:9 in a level: no side panels">
+  <img src="screenshots/game-16x9-2.png" width="48%" alt="Full 16:9 in a level: the level across the whole screen">
+  <br><sub>Full 16:9 in levels (experimental): no side panels, the level fills the screen.</sub>
+</p>
+<p align="center">
   <img src="screenshots/launcher.png" width="70%" alt="The launcher">
 </p>
 
@@ -23,6 +28,9 @@ emulator**: the Wii system libraries (video, audio, controllers, disc, saves) ar
 - **Render resolution** from the original 480p up to 720p, 1080p and 1440p.
 - **Aspect ratio:** true 16:9 widescreen (the game itself draws wider), fill the window, cinematic 2.39:1, or
   the original 4:3.
+- **Full 16:9 in levels** *(experimental, Display page)*: removes the side panels the game frames its 4:3 play
+  area with, and shows the level across the whole screen. The camera, the room edges and what the game draws all
+  follow the wider view (the mission and treasure icons are still shown in the pause menu).
 - **Windowed, borderless or exclusive fullscreen** (F11 switches in game), VSync and an FPS counter.
 - **Direct3D 12 or Vulkan** (through Aurora / Dawn).
 - **Experimental frame interpolation** to 120 FPS.
@@ -31,10 +39,10 @@ emulator**: the Wii system libraries (video, audio, controllers, disc, saves) ar
 - **Wii Remote motion:**
   - **shake** with L2/R2 (continuous shaking while held, like on the Wii);
   - **tilt** with L1/R1 (30°) or with the **left stick**, which aims up to 85° in the direction you push;
-  - **DualSense accelerometer** *(in testing)*: on by default. Tilt the controller itself like a sideways Wii Remote;
+  - **DualSense accelerometer**: on by default. Tilt the controller itself like a sideways Wii Remote;
     the left stick, L1/R1 (tilt) and L2/R2 (shake) work at the same time and take over while held. Click the
     touchpad to turn the sensors off.
-- **Skippable intro** with one button (or shortened to a single frame).
+- **Skippable intro** with one button .
 - **Launcher** with display, graphics, audio, game and controls settings, disc import, save backups, the game
   log and one-click install.
 - **Import the game from your own disc image:** `.iso`, `.wbfs`, `.ciso`, `.rvz`, `.wia` or `.gcz`.
@@ -95,7 +103,7 @@ choose whether the left stick tilts/aims or moves, and invert the sensor axes.
 | Page | What's there |
 |---|---|
 | Home | Quick settings, game status and the PLAY button |
-| Display | Window mode, window size, aspect ratio, VSync, FPS counter |
+| Display | Window mode, window size, aspect ratio, full 16:9 in levels, VSync, FPS counter |
 | Graphics | Render resolution, frame interpolation, Direct3D 12 / Vulkan, GPU compatibility, textures |
 | Audio | Master volume, mute, audio mixing thread |
 | Game | Game folder, disc import, saves folder, game language, intro, save backups |
@@ -160,7 +168,6 @@ far, audio, 16:9, gamepad and keyboard. Still to test or to do:
 
 - Playing through the whole game (bosses, every level and the 12 story movies).
 - The DualSense accelerometer, and shaking everywhere the game asks for it.
-- Performance with many enemies on screen.
 - Separate music, sound effects and voice volumes.
 - An HD texture pack.
 

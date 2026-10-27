@@ -4,8 +4,11 @@
 
 #include <SDL3/SDL_keyboard.h>
 #include <SDL3/SDL_scancode.h>
+#include <SDL3/SDL_timer.h>
 
 #include <array>
+#include <cstdint>
+#include <string>
 #include <mutex>
 #include <vector>
 
@@ -28,8 +31,8 @@ const std::array<Default, kActionCount>& Defaults() {
         {"run", "Run / Fire (1)", {SDL_SCANCODE_Z, SDL_SCANCODE_LSHIFT}},
         {"a", "A", {SDL_SCANCODE_A}},
         {"shake", "Shake (Spin)", {SDL_SCANCODE_C, SDL_SCANCODE_LCTRL}},
-        {"tilt_left", "Tilt Left", {SDL_SCANCODE_Q}},
-        {"tilt_right", "Tilt Right", {SDL_SCANCODE_E}},
+        {"tilt_left", "Tilt: lower angle", {SDL_SCANCODE_Q}},
+        {"tilt_right", "Tilt: raise angle", {SDL_SCANCODE_E}},
         {"plus", "+ (Pause)", {SDL_SCANCODE_RETURN, SDL_SCANCODE_ESCAPE}},
         {"minus", "- (Minus)", {SDL_SCANCODE_MINUS, SDL_SCANCODE_TAB}},
     }};
@@ -42,6 +45,8 @@ std::array<std::vector<SDL_Scancode>, kActionCount> g_codes;
 int g_capturing = -1;
 std::vector<bool> g_heldAtCapture;  // keys already down when the capture began
 bool g_suppress = false;            // a capture just ended: ignore the keyboard until all keys are up
+std::string g_captureNote;          // WARIO: why the last capture was refused (key already in use)
+uint64_t g_captureNoteNs = 0;
 
 std::vector<SDL_Scancode> Parse(const std::string& text) {
     std::vector<SDL_Scancode> codes;
@@ -170,8 +175,24 @@ bool PollCapture() {
         }
         const auto code = static_cast<SDL_Scancode>(i);
         if (code != SDL_SCANCODE_ESCAPE) {
-            g_codes[g_capturing] = {code};
-            SaveLocked(g_capturing);
+            // WARIO: una tecla solo puede tener una accion; si ya la usa otra, no se asigna.
+            int owner = -1;
+            for (int a = 0; a < kActionCount && owner < 0; ++a) {
+                if (a == g_capturing) continue;
+                for (const SDL_Scancode c : g_codes[a]) {
+                    if (c == code) { owner = a; break; }
+                }
+            }
+            if (owner >= 0) {
+                const char* keyName = SDL_GetScancodeName(code);
+                g_captureNote = std::string(keyName != nullptr && *keyName ? keyName : "That key") + " is already used by " +
+                                Defaults()[owner].name + ". Change that one first.";
+                g_captureNoteNs = SDL_GetTicksNS();
+            } else {
+                g_codes[g_capturing] = {code};
+                SaveLocked(g_capturing);
+                g_captureNote.clear();
+            }
         }
         g_capturing = -1;
         g_suppress = true;
@@ -195,6 +216,12 @@ void ResetDefaults() {
         g_codes[i] = Defaults()[i].codes;
         SaveLocked(i);
     }
+}
+
+std::string CaptureNote() {
+    std::lock_guard<std::mutex> lock(g_mutex);
+    if (!g_captureNote.empty() && SDL_GetTicksNS() - g_captureNoteNs > 5'000'000'000ull) g_captureNote.clear();
+    return g_captureNote;
 }
 
 } // namespace Keybinds

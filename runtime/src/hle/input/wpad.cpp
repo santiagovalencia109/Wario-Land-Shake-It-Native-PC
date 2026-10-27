@@ -166,10 +166,13 @@ extern "C" int32_t WPADProbe_HLE(uint32_t chan, uint32_t typePtr)
 }
 PPC_NATIVE_OVERRIDE(803B0E64, WPADProbe_HLE, int32_t, (uint32_t chan, uint32_t typePtr), (chan, typePtr));
 
+// WARIO: el juego enciende y apaga el motor del Wii Remote (fn_8000BB60 y otros); se pasa a los mandos
+// (DualSense, Xbox...) y al Wii Remote real a traves de SDL (virtual_remote.cpp).
+namespace VirtualRemote { void SetMotor(uint32_t chan, bool on); }
 extern "C" void WPADControlMotor_HLE(uint32_t chan, uint32_t command)
 {
-    (void)chan;
-    (void)command;
+    if (chan >= WpadContract::kChannelCount) return;
+    VirtualRemote::SetMotor(chan, command != 0);
 }
 PPC_NATIVE_OVERRIDE(803B1394, WPADControlMotor_HLE, void, (uint32_t chan, uint32_t command), (chan, command));
 

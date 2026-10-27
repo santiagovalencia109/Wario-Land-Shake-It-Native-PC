@@ -258,6 +258,10 @@ GXFifoObj* GXInit(void* base, u32 size) {
   // GXPokeDstAlpha(GX_DISABLE, 0);
   // GXPokeZMode(GX_TRUE, GX_ALWAYS, GX_TRUE);
 
+  // Dual texture transform on, as the SDK's GXInit leaves it (__GXInitRevisionBits writes XF 0x1012 = 1): without it
+  // GXSetTexCoordGen2's post-transform matrices (GX_PTTEXMTXn) are ignored.
+  GX_WRITE_XF_REG(0x12, 1);
+
   return &sFifoObj;
 }
 

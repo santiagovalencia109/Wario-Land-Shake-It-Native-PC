@@ -48,6 +48,8 @@ extern "C" uint32_t WarioHostSkipButtons() {
 #include <string>
 #include <vector>
 
+void WarioRuntimeFixesTick();
+
 namespace VirtualRemote {
 namespace {
 
@@ -64,11 +66,10 @@ constexpr uint32_t kScreenLeft = kWpadUp, kScreenRight = kWpadDown, kScreenUp = 
 // What the game's motion code looks for (dGameKeyCore_c::setShakeY and the tilt code after
 // setConfigKey): a shake is acc.y changing by at least 0.28 g between consecutive frames on four
 // frames (gaps of up to two allowed), then a five-frame cool-down; the tilt angle is -acc.z, through
-// KPAD's acc_vertical, at 16384 angle units per g. Wario Land: Shake It! (wpadMain 0x80234528, check
-// 0x80235180) instead averages acc.y over four frames at a time and wants a dip then a steep rise
-// (at least 1 g, 0.75 g per four frames); a swing flipping every frame averages to nothing there. So a
-// shake is one flick, added to rest acc.y: a quick dip, a steep rise, back to rest. All but one frame
-// change by at least 0.6 g, for the frame-to-frame check. Holding the button keeps flicking.
+// KPAD's acc_vertical, at 16384 angle units per g. A shake is one flick, added to rest acc.y: a quick
+// dip, a steep rise, back to rest. All but one frame change by at least 0.6 g, for the frame-to-frame
+// check. Holding the button keeps flicking. (Wario Land: Shake It! uses its own detector, fn_800AA5FC:
+// see kWarioShakeG below.)
 constexpr float kShakeFlickG[] = {-0.8f, -1.6f, -0.6f, 0.4f, 1.4f, 2.4f, 2.4f, 1.2f, 0.0f};
 constexpr int kShakeFrames = static_cast<int>(std::size(kShakeFlickG));
 constexpr float kMaxTiltRadians = 0.7853982f;  // 45 degrees
@@ -84,8 +85,8 @@ constexpr uint64_t kPadRefreshNs = 4'000'000;
 // L1/R1 y Q/E inclinan 30 grados.
 constexpr float kWarioMaxTilt = 1.4835299f;     // 85 grados
 constexpr float kWarioButtonTilt = 30.0f / 85.0f;
-// Sacudir: mientras se mantiene, impulso alterno de +-3.46 g en el eje vertical del mando (KPAD y), que
-// cambia cada 5 cuadros (6 Hz), como el 6 Hz +-90/26 g de portWario; una pulsacion corta dura 10 cuadros.
+// Sacudir: mientras se mantiene, impulso alterno de +-3.46 g (decayendo dentro de cada mitad) en el eje
+// vertical del mando (KPAD y), que cambia cada 5 cuadros (6 Hz), como el 6 Hz +-90/26 g de portWario; una pulsacion corta dura 10 cuadros.
 constexpr float kWarioShakeG = 3.46f;
 constexpr int kWarioShakeHalfPeriod = 5;
 constexpr int kWarioShakeMinFrames = 10;
@@ -164,6 +165,10 @@ void RefreshPadsLocked() {
     }
 }
 
+// WARIO: inclinacion fijada con el teclado, 0..88 grados hacia arriba (bajo la horizontal el juego no mueve
+// la flecha). Sacudir la devuelve a 0: el juego no reconoce bien la sacudida con el mando inclinado.
+float g_keyTiltAngle = 0.0f;
+
 // The built-in layout for port 1, used while no port has aurora's keyboard switched on.
 Intent KeyboardIntent() {
     Intent intent;
@@ -186,7 +191,40 @@ Intent KeyboardIntent() {
     if (Held(kPlus)) intent.buttons |= kWpadPlus;
     if (Held(kMinus)) intent.buttons |= kWpadMinus;
     intent.shake = Held(kShake);
-    intent.tilt = ((Held(kTiltRight) ? 1.0f : 0.0f) - (Held(kTiltLeft) ? 1.0f : 0.0f)) * kWarioButtonTilt;
+    if (intent.shake) g_keyTiltAngle = 0.0f;
+    // WARIO: en el teclado la inclinacion se queda fija (apuntar necesita angulos estables). Mantener
+    // "inclinar a la derecha" (E) sube el angulo y "inclinar a la izquierda" (Q) lo baja, a kKeyTiltSpeed
+    // grados por segundo; al soltar se queda donde esta. El angulo es relativo a donde mira Wario (la ultima
+    // direccion izquierda/derecha pulsada), asi E siempre levanta la flecha.
+    constexpr float kKeyTiltSpeed = 90.0f;  // grados por segundo
+    // Casi vertical: a 90 exactos el mando queda de punta y el juego deja de leer la inclinacion (se traba
+    // hasta reiniciar). 88 grados ya apunta practicamente recto hacia arriba.
+    constexpr float kKeyTiltMax = 88.0f;
+    float& s_angle = g_keyTiltAngle;
+    static bool s_facingLeft = false;
+    static bool s_leftWas = false, s_rightWas = false, s_tiltWas = false;
+    static uint64_t s_lastNs = 0;
+    const uint64_t nowNs = SDL_GetTicksNS();
+    const float dt = s_lastNs == 0 ? 0.0f : std::min(0.1f, float(nowNs - s_lastNs) / 1e9f);
+    s_lastNs = nowNs;
+    const bool leftNow = Held(kLeft), rightNow = Held(kRight);
+    if (leftNow && !s_leftWas) s_facingLeft = true;
+    if (rightNow && !s_rightWas) s_facingLeft = false;
+    s_leftWas = leftNow;
+    s_rightWas = rightNow;
+    const bool upNow = Held(kTiltRight), downNow = Held(kTiltLeft);
+    if (upNow != downNow) {
+        s_angle = std::clamp(s_angle + (upNow ? kKeyTiltSpeed : -kKeyTiltSpeed) * dt, 0.0f, kKeyTiltMax);
+    }
+    const bool tiltNow = upNow || downNow;
+    if (s_tiltWas && !tiltNow) {
+        RT_LOGF(RT_TAG_CONFIG, "[keyboard] inclinacion: %.0f grados mirando a la %s\n", s_angle, s_facingLeft ? "izquierda" : "derecha");
+    }
+    s_tiltWas = tiltNow;
+    if (std::fabs(s_angle) < 0.5f && !tiltNow) s_angle = 0.0f;
+    // El juego toma el angulo como -acc.z: mirando a la derecha la flecha sube con tilt positivo; a la izquierda, negativo.
+    const float mag = s_angle / 85.0f;
+    intent.tilt = s_facingLeft ? -mag : mag;
     return intent;
 }
 
@@ -512,8 +550,14 @@ void ApplyMotion(Motion& motion, const Intent& intent, WiiRemoteInput::KpadSampl
             sample.acc[1] = -std::cos(angle);
             sample.acc[2] = std::sin(angle);
         }
+        // Cada medio periodo arranca en el pico y decae hacia reposo. El juego (fn_800AA5FC) solo cuenta
+        // una sacudida cuando el cambio de acc va en contra de acc (dot(norm(dAcc), norm(acc)) < 0) con
+        // |acc| > 1.2/2.0/2.8 g; una onda cuadrada pura da dAcc = 0 en los cuadros planos y nunca dispara
+        // sin el ruido de los sensores del mando.
+        const int phase = motion.shakeTick % kWarioShakeHalfPeriod;
+        const float decay = 1.0f - 0.15f * static_cast<float>(phase);
         const bool up = ((motion.shakeTick / kWarioShakeHalfPeriod) & 1) != 0;
-        sample.acc[1] += up ? kWarioShakeG : -kWarioShakeG;
+        sample.acc[1] += (up ? kWarioShakeG : -kWarioShakeG) * decay;
         ++motion.shakeTick;
         if (!intent.shake) --motion.shakeLeft;
     } else {
@@ -643,6 +687,69 @@ void UpdatePointer(WiiRemoteInput::KpadSample& sample) {
     sample.pointer[1] = pos[1];
 }
 
+// WARIO: vibracion. El motor del Wii Remote solo se enciende o apaga; aqui se manda a los mandos de SDL que
+// usa ese jugador (jugador 1: todos los mandos abiertos, incluido un Wii Remote real; los demas: el suyo) y se
+// renueva mientras sigue encendido (SDL apaga la vibracion al acabar su duracion). La opcion Vibracion del
+// launcher ([controller] rumble) la desactiva.
+extern "C" bool PAD_HLE_RumbleEnabled();
+std::array<std::atomic<bool>, PAD_MAX_CONTROLLERS> g_motorOn{};
+std::array<uint64_t, PAD_MAX_CONTROLLERS> g_motorSentNs{};
+std::array<uint64_t, PAD_MAX_CONTROLLERS> g_motorOnSinceNs{};
+std::array<bool, PAD_MAX_CONTROLLERS> g_motorRunning{};  // lo que tienen los mandos ahora
+// Los pulsos del Wii Remote son cortos (el juego enciende y apaga el motor para dar golpes); los motores de un
+// mando tardan en arrancar, asi que cada pulso vibra al menos kMotorMinNs para que se note.
+constexpr uint64_t kMotorMinNs = 120'000'000ull;
+
+void SendMotor(uint32_t chan, bool on) {
+    // Intensidad: [gamepad] wario_rumble_strength = "0".."100" (launcher, Controles); por defecto al maximo.
+    static const int strength = [] {
+        const std::string v = RuntimeConfigFile::GamepadBinding("wario_rumble_strength");
+        const int n = v.empty() ? 100 : std::atoi(v.c_str());
+        return std::clamp(n, 0, 100);
+    }();
+    const Uint16 kStrong = static_cast<Uint16>(0xFFFF * strength / 100), kWeak = kStrong;
+    constexpr Uint32 kDurationMs = 250;
+    const bool enabled = on && PAD_HLE_RumbleEnabled();
+    int count = 0;
+    SDL_JoystickID* ids = SDL_GetGamepads(&count);
+    for (int i = 0; ids != nullptr && i < count; ++i) {
+        SDL_Gamepad* gamepad = SDL_GetGamepadFromID(ids[i]);
+        if (gamepad == nullptr) continue;
+        const int player = SDL_GetGamepadPlayerIndex(gamepad);
+        const bool mine = chan == 0 || player == static_cast<int>(chan);  // un solo jugador: el 1 usa todos
+        if (!mine) continue;
+        SDL_RumbleGamepad(gamepad, enabled ? kStrong : 0, enabled ? kWeak : 0, enabled ? kDurationMs : 0);
+    }
+    if (ids != nullptr) SDL_free(ids);
+    g_motorSentNs[chan] = SDL_GetTicksNS();
+}
+
+void RefreshMotor(uint32_t chan) {
+    if (chan >= PAD_MAX_CONTROLLERS) return;
+    const uint64_t now = SDL_GetTicksNS();
+    const bool on = g_motorOn[chan].load(std::memory_order_relaxed);
+    if (on) {
+        if (!g_motorRunning[chan] || now - g_motorSentNs[chan] > 150'000'000ull) {
+            SendMotor(chan, true);
+            g_motorRunning[chan] = true;
+        }
+    } else if (g_motorRunning[chan] && now - g_motorOnSinceNs[chan] >= kMotorMinNs) {
+        SendMotor(chan, false);
+        g_motorRunning[chan] = false;
+    }
+}
+
+void SetMotor(uint32_t chan, bool on) {
+    if (chan >= PAD_MAX_CONTROLLERS) return;
+    const bool was = g_motorOn[chan].exchange(on, std::memory_order_relaxed);
+    if (was == on) return;
+    const uint64_t now = SDL_GetTicksNS();
+    if (on) {
+        g_motorOnSinceNs[chan] = now;
+    }
+    RefreshMotor(chan);
+}
+
 bool Sample(uint32_t chan, WiiRemoteInput::KpadSample& sample) {
     if (chan >= PAD_MAX_CONTROLLERS) {
         return false;
@@ -670,14 +777,28 @@ bool Sample(uint32_t chan, WiiRemoteInput::KpadSample& sample) {
             intent.tilt = other.tilt;
         }
     };
-    if (chan == 0 && !g_keyboardOnAPort) {
-        const Intent keys = KeyboardIntent();
-        if (keys.buttons != 0 || keys.shake || keys.tilt != 0.0f) g_lastInputWasPad = false;
-        merge(keys);
-    }
     if (chan == 0) {
-        const Intent pads = GamepadIntent();
+        Intent keys;
+        bool tiltKeys = false;
+        if (!g_keyboardOnAPort) {
+            keys = KeyboardIntent();
+            tiltKeys = Keybinds::Held(Keybinds::kTiltLeft) || Keybinds::Held(Keybinds::kTiltRight);
+        }
+        Intent pads = GamepadIntent();
+        // WARIO: la inclinacion fijada con el teclado (E/Q) manda siempre, haya mando conectado o no; mientras
+        // no sea 0 el stick, L1/R1 y los sensores del mando no la tapan (Q la devuelve a 0 y el mando vuelve a mandar).
+        const bool keyInput = keys.buttons != 0 || keys.shake || tiltKeys;
+        if (pads.shake && keys.tilt != 0.0f) {  // sacudir con el mando tambien quita la inclinacion del teclado
+            g_keyTiltAngle = 0.0f;
+            keys.tilt = 0.0f;
+        }
+        if (keys.tilt != 0.0f) {
+            pads.tilt = 0.0f;
+            pads.hasAccel = false;
+        }
+        if (keyInput) g_lastInputWasPad = false;
         if (pads.buttons != 0 || pads.shake || pads.tilt != 0.0f) g_lastInputWasPad = true;
+        merge(keys);
         merge(pads);
         merge(TouchIntent());
     }
@@ -687,6 +808,8 @@ bool Sample(uint32_t chan, WiiRemoteInput::KpadSample& sample) {
     sample.hold = intent.buttons;
     ApplyMotion(g_motion[chan], intent, sample);
     if (chan == 0) UpdatePointer(sample);
+    if (chan == 0) WarioRuntimeFixesTick();  // wario_fixes.cpp
+    RefreshMotor(chan);
     return true;
 }
 

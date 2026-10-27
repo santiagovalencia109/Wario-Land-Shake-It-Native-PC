@@ -208,15 +208,16 @@ extern "C" uint32_t __OSInitSTM_HLE_801ab848(CpuContext* ctx)
          return 0;
     }
 
-    // NSMBW offsets: r13-0x4F64=StmReady, r13-0x4F60=StmImDesc (/dev/stm/immediate),
-    // r13-0x4F5C=StmEhDesc (/dev/stm/eventhook).
+    // WARIO: offsets de __OSInitSTM de Wario (0x8041F7B0): r13-0x25AC=StmReady, r13-0x25A8=StmImDesc
+    // (/dev/stm/immediate), r13-0x25A4=StmEhDesc (/dev/stm/eventhook). Los de NSMBW (r13-0x735C/58/54)
+    // escribian sobre datos del juego (0x8061B344..4C).
     try {
         // Mark STM as initialized
-        ::Memory::Write32(r13 - 0x735cu, 1);
+        ::Memory::Write32(r13 - 0x25acu, 1);
 
         // Fake non-zero handles so callers' zero-checks pass.
-        ::Memory::Write32(r13 - 0x7358u, 0x00535401);
-        ::Memory::Write32(r13 - 0x7354u, 0x00535402);
+        ::Memory::Write32(r13 - 0x25a8u, 0x00535401);
+        ::Memory::Write32(r13 - 0x25a4u, 0x00535402);
 
         // Default Power/Reset callback pointers are left unset; safe since we never fire
         // the STM hardware interrupt that would invoke them.

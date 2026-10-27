@@ -132,7 +132,9 @@ namespace WarioLauncher
             Task.Run(() =>
             {
                 using (var wc = NewClient()) wc.DownloadFile(url, tmp);
-                return ApplyZip(tmp);
+                int files = ApplyZip(tmp);
+                string launcherNote = UpdateLauncherBinary();
+                return Tuple.Create(files, launcherNote);
             }).ContinueWith(t => BeginInvoke(new Action(() =>
             {
                 Cursor = Cursors.Default;
@@ -142,8 +144,53 @@ namespace WarioLauncher
                     MessageBox.Show(this, Loc.T("La actualización falló: ", "The update failed: ") + t.Exception.GetBaseException().Message, Text, MessageBoxButtons.OK, MessageBoxIcon.Error);
                     return;
                 }
-                AfterUpdate(t.Result);
+                if (t.Result.Item2 != null) MessageBox.Show(this, t.Result.Item2, Text, MessageBoxButtons.OK, MessageBoxIcon.Information);
+                AfterUpdate(t.Result.Item1);
             })));
+        }
+
+        // ---- Actualizacion del propio launcher ----
+        // version.json lleva "launcher": la version del launcher de ese release. Si es mayor que la de este
+        // .exe, se baja WarioLauncher.exe de los archivos del release (v<launcher>), este .exe se renombra a
+        // WarioLauncher.old.exe (un .exe en uso se puede renombrar, no borrar) y el nuevo ocupa su sitio; se
+        // usa al volver a abrir el launcher, que borra el .old.exe al arrancar. tools\build-wario.ps1 hace lo
+        // mismo para los launchers anteriores a esto (0.1.0), que no tienen este codigo.
+        private static Version Norm(Version v) => new Version(Math.Max(0, v.Major), Math.Max(0, v.Minor), Math.Max(0, v.Build));
+        internal static Version OwnVersion => Norm(typeof(MainForm).Assembly.GetName().Version);
+
+        // Devuelve un aviso para el usuario si se cambio el launcher (o si fallo), o null si no hacia falta.
+        private string UpdateLauncherBinary()
+        {
+            string field = LocalField("launcher");
+            if (string.IsNullOrEmpty(field)) return null;
+            Version want = Norm(Ver(field));
+            if (want <= OwnVersion) return null;
+            string self = typeof(MainForm).Assembly.Location;
+            string dir = Path.GetDirectoryName(self);
+            string fresh = Path.Combine(dir, "WarioLauncher.new.exe");
+            string old = Path.Combine(dir, "WarioLauncher.old.exe");
+            try
+            {
+                string url = "https://github.com/" + UpdateRepo + "/releases/download/v" + field + "/WarioLauncher.exe";
+                using (var wc = NewClient()) wc.DownloadFile(url, fresh);
+                byte[] head = new byte[2];
+                using (var f = File.OpenRead(fresh)) f.Read(head, 0, 2);
+                if (new FileInfo(fresh).Length < 100000 || head[0] != (byte)'M' || head[1] != (byte)'Z')
+                    throw new InvalidDataException("not an executable");
+                if (File.Exists(old)) File.Delete(old);
+                File.Move(self, old);
+                try { File.Move(fresh, self); }
+                catch { File.Move(old, self); throw; }  // deja el launcher como estaba
+                return Loc.T("El launcher también se actualizó a la versión ", "The launcher was updated too, to version ") + field + ". " +
+                       Loc.T("Ciérralo y vuelve a abrirlo para usarlo.", "Close it and open it again to use it.");
+            }
+            catch (Exception ex)
+            {
+                try { if (File.Exists(fresh)) File.Delete(fresh); } catch { }
+                return Loc.T("No se pudo actualizar el launcher (", "Could not update the launcher (") + ex.Message + "). " +
+                       Loc.T("Puedes bajar el zip de la versión ", "You can download the zip of version ") + field +
+                       Loc.T(" desde GitHub y copiar WarioLauncher.exe.", " from GitHub and copy WarioLauncher.exe.");
+            }
         }
 
         private static readonly string[] Protected = { "game", "generated", "play", "toolchain", "nb-win", "nb", "build-logs", "dist", "_local", "_papelera" };

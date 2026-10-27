@@ -230,6 +230,10 @@ namespace WarioLauncher
 
         public static KeyCapture Active;
 
+        // Devuelve un aviso si la tecla ya esta asignada a otra casilla (entonces no se asigna), o null.
+        public Func<string, string> Validate;
+        public static event Action<string> Rejected;
+
         [System.Runtime.InteropServices.DllImport("user32.dll")]
         private static extern short GetKeyState(int vk);
         private static bool Down(int vk) => (GetKeyState(vk) & 0x8000) != 0;
@@ -260,7 +264,12 @@ namespace WarioLauncher
             Active = null;
             _waiting = false;
             string name = Bindings.SdlKeyName(k);
-            if (name != null && !Bindings.Reserved(name)) { Value = name; Changed?.Invoke(); }
+            if (name != null && !Bindings.Reserved(name))
+            {
+                string conflict = Validate?.Invoke(name);
+                if (conflict != null) Rejected?.Invoke(conflict);
+                else if (name != Value) { Value = name; Changed?.Invoke(); }
+            }
             Refresh0();
         }
     }
