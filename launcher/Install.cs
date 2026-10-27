@@ -46,8 +46,8 @@ namespace WarioLauncher
                         "To start, pick your copy of Wario Land: Shake It! and press Install. The other pages unlock when it finishes."));
             if (_root == null)
             {
-                p.Info(Loc.T("Este lanzador no está junto a las herramientas del port (falta tools\\build-wario.ps1), así que aquí no puede instalar.",
-                             "This launcher is not next to the port's tools (tools\\build-wario.ps1 is missing), so it cannot install here."), Theme.Bad);
+                p.Info(Loc.T("Este lanzador no está junto a las herramientas del port (falta tools\\build-wario.ps1), así que aquí no puede instalar. Descarga el zip WarioRecomp-<versión> del release de GitHub, descomprímelo y abre el WarioLauncher.exe de dentro.",
+                             "This launcher is not next to the port's tools (tools\\build-wario.ps1 is missing), so it cannot install here. Download the WarioRecomp-<version> zip from the GitHub release, extract it and open the WarioLauncher.exe inside."), Theme.Bad);
                 return p;
             }
 
@@ -187,6 +187,7 @@ namespace WarioLauncher
             MessageBox.Show(this, ok ? Loc.T("¡Listo! WarioRecomp.exe está compilado. Ya puedes jugar.", "Done! WarioRecomp.exe is built. You can play now.")
                                      : Loc.T("La compilación no terminó. Revisa el registro de la página Instalación (build-logs).", "The build did not finish. Check the log on the Install page (build-logs)."),
                 Text, MessageBoxButtons.OK, ok ? MessageBoxIcon.Information : MessageBoxIcon.Warning);
+            if (ok && _reopenAfterBuild) { ReopenLauncher(); return; }  // el .exe del launcher se cambio en la actualizacion
             if (ok) BuildShell();  // quita el boton "Recompilar ahora" de la barra lateral
             ShowPage(ok ? 0 : 7);  // al terminar bien se activan las demas paginas
             UpdateStatus();

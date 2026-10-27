@@ -63,6 +63,9 @@ trap { Set-Status ("ERROR: " + $_.Exception.Message); exit 1 }
 # the code is older, WarioLauncher.exe is downloaded from that release's files (tag v<launcher>). The running
 # launcher is renamed to WarioLauncher.old.exe (a running .exe can be renamed, not deleted) and the new one
 # takes its name; it is used from the next start, and the new launcher deletes the .old.exe. Never fatal.
+# Set when a 0.1.0 launcher (that has no self-update) was replaced: at the end of a good build it is closed and
+# the new one opened, so the person sees the new version without doing anything.
+$script:launcherRestart = $null
 function Update-LauncherBinary {
     $vj = Join-Path $root 'version.json'
     if (-not (Test-Path -LiteralPath $vj)) { return }
@@ -95,7 +98,8 @@ function Update-LauncherBinary {
         if (Test-Path -LiteralPath $old) { Remove-Item -LiteralPath $old -Force }
         Move-Item -LiteralPath $exe -Destination $old
         try { Move-Item -LiteralPath $fresh -Destination $exe } catch { Move-Item -LiteralPath $old -Destination $exe; throw }
-        Set-Status (L "launcher actualizado a $want (se usa al volver a abrirlo)" "launcher updated to $want (used from the next start)")
+        if ($proc) { $script:launcherRestart = @{ Pid = $proc.Id; Exe = $exe } }
+        Set-Status (L "launcher actualizado a $want (se reabre al terminar la compilacion)" "launcher updated to $want (it reopens when the build finishes)")
     } catch {
         Remove-Item -LiteralPath $fresh -ErrorAction SilentlyContinue
         Set-Status (L "aviso: no se pudo actualizar el launcher ($($_.Exception.Message)); baja el zip $want de GitHub" "warning: could not update the launcher ($($_.Exception.Message)); download the $want zip from GitHub")
@@ -227,3 +231,15 @@ if (-not $SkipRun) {
     Set-Status ((L "prueba terminada (codigo {0}); ver build-logs\run.log y run.err.log" "test finished (code {0}); see build-logs\run.log and run.err.log") -f $p.ExitCode)
 }
 Set-Status (L 'LISTO' 'DONE')
+if ($script:launcherRestart) {
+    # A separate process waits for this script to end, closes the old launcher and opens the new one.
+    $lp = $script:launcherRestart.Pid
+    $le = $script:launcherRestart.Exe -replace "'", "''"
+    $ld = (Split-Path -Parent $script:launcherRestart.Exe) -replace "'", "''"
+    $cmd = "Wait-Process -Id $PID -ErrorAction SilentlyContinue; Start-Sleep -Seconds 1; " +
+           "Stop-Process -Id $lp -Force -ErrorAction SilentlyContinue; Start-Sleep -Seconds 1; " +
+           "Start-Process -FilePath '$le' -WorkingDirectory '$ld'"
+    Start-Process -FilePath (Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe') -WindowStyle Hidden `
+        -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', $cmd) | Out-Null
+    Set-Status (L 'el launcher se reabre con la version nueva' 'the launcher reopens with the new version')
+}

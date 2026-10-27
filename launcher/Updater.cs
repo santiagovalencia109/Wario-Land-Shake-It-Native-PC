@@ -158,6 +158,17 @@ namespace WarioLauncher
         private static Version Norm(Version v) => new Version(Math.Max(0, v.Major), Math.Max(0, v.Minor), Math.Max(0, v.Build));
         internal static Version OwnVersion => Norm(typeof(MainForm).Assembly.GetName().Version);
 
+        // Tras cambiar el .exe del launcher: se cierra y se abre el nuevo al terminar la compilacion (o en seguida
+        // si no se recompila).
+        private bool _reopenAfterBuild;
+
+        private void ReopenLauncher()
+        {
+            try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(typeof(MainForm).Assembly.Location) { WorkingDirectory = _playDir, UseShellExecute = false }); }
+            catch { return; }  // si no se puede abrir, sigue este
+            Close();
+        }
+
         // Devuelve un aviso para el usuario si se cambio el launcher (o si fallo), o null si no hacia falta.
         private string UpdateLauncherBinary()
         {
@@ -181,8 +192,9 @@ namespace WarioLauncher
                 File.Move(self, old);
                 try { File.Move(fresh, self); }
                 catch { File.Move(old, self); throw; }  // deja el launcher como estaba
+                _reopenAfterBuild = true;
                 return Loc.T("El launcher también se actualizó a la versión ", "The launcher was updated too, to version ") + field + ". " +
-                       Loc.T("Ciérralo y vuelve a abrirlo para usarlo.", "Close it and open it again to use it.");
+                       Loc.T("Se cerrará y se abrirá el nuevo al terminar.", "It will close and open the new one when done.");
             }
             catch (Exception ex)
             {
@@ -234,6 +246,7 @@ namespace WarioLauncher
                 "\n\n" + Loc.T("¿Recompilar ahora?", "Rebuild now?");
             ShowPage(7);
             if (MessageBox.Show(this, msg, Text, MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes) StartBuild(quick);
+            else if (_reopenAfterBuild) ReopenLauncher();
         }
     }
 
