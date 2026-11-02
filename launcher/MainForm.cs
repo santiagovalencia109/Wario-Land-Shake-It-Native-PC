@@ -402,11 +402,12 @@ namespace WarioLauncher
             p.Section(Loc.T("Resolución", "Resolution"));
             p.Row(Loc.T("Resolución interna", "Render resolution"), ScaleCombo(),
                 Loc.T("Se nota más en pantalla completa o en una ventana grande.", "Shows most in fullscreen or a large window."));
-            var fi = new[] { new Choice(Loc.T("Desactivada", "Off"), 0), new Choice("120 FPS", 120) };
+            var fi = new[] { new Choice(Loc.T("Desactivada", "Off"), 0), new Choice("120 FPS", 120), new Choice("180 FPS", 180), new Choice("240 FPS", 240) };
             int fcur = _cfg.GetInt("video", "frame_interpolation_fps", 0);
             p.Row(Loc.T("Interpolación de cuadros", "Frame interpolation"),
                 Combo(fi, fi.FirstOrDefault(c => (int)c.Value == fcur) ?? fi[0], v => Write(t => t.SetInt("video", "frame_interpolation_fps", (int)v))),
-                Loc.T("Experimental.", "Experimental."));
+                Loc.T("Experimental. El juego sigue a 60; se añaden cuadros intermedios. Va mejor si el monitor funciona a esa frecuencia.",
+                      "Experimental. The game still runs at 60; frames in between are added. Best when the monitor runs at that rate."));
             p.Section(Loc.T("Renderizador", "Renderer"));
             var apis = new[] { new Choice(Loc.T("Automático", "Automatic"), "auto"), new Choice("Direct3D 12", "d3d12"), new Choice("Vulkan", "vulkan") };
             string api = _cfg.GetString("video", "graphics_api", "auto");

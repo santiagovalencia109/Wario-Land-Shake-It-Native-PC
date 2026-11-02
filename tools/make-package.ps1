@@ -4,7 +4,7 @@
 param([string]$Version = '')
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
-$launcherExe = Join-Path $root 'launcher\bin\out\WarioLauncher.exe'
+$launcherExe = Join-Path $root 'launcher-avalonia\bin\out\WarioLauncher.exe'
 if (-not (Test-Path -LiteralPath $launcherExe)) { throw 'Build the launcher first (Build-Launcher.cmd).' }
 if (-not $Version) {
     $vj = Join-Path $root 'version.json'
@@ -29,7 +29,7 @@ function Copy-Tree([string]$from, [string]$to) {
         }
     }
 }
-foreach ($dir in @('runtime', 'aurora', 'projects', 'tools', 'launcher', 'local-assets', 'screenshots')) {
+foreach ($dir in @('runtime', 'aurora', 'projects', 'tools', 'launcher-avalonia', 'local-assets', 'screenshots')) {
     $src = Join-Path $root $dir
     if (Test-Path -LiteralPath $src) { Copy-Tree $src (Join-Path $stage $dir) }
 }
@@ -47,8 +47,6 @@ foreach ($f in @('README.md', 'LICENSE', 'version.json')) {
     if (Test-Path -LiteralPath $src) { Copy-Item -LiteralPath $src -Destination (Join-Path $stage $f) }
 }
 Copy-Item -LiteralPath $launcherExe -Destination (Join-Path $stage 'WarioLauncher.exe')
-$cfg = $launcherExe + '.config'
-if (Test-Path -LiteralPath $cfg) { Copy-Item -LiteralPath $cfg -Destination (Join-Path $stage 'WarioLauncher.exe.config') }
 
 # ---- Bundled build tools (like the WiiCompiled installer), so installing downloads nothing.
 $toolchain = Join-Path $root 'toolchain'

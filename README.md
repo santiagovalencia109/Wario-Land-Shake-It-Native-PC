@@ -33,7 +33,9 @@ emulator**: the Wii system libraries (video, audio, controllers, disc, saves) ar
   follow the wider view (the mission and treasure icons are still shown in the pause menu).
 - **Windowed, borderless or exclusive fullscreen** (F11 switches in game), VSync and an FPS counter.
 - **Direct3D 12 or Vulkan** (through Aurora / Dawn).
-- **Experimental frame interpolation** to 120 FPS.
+- **Experimental frame interpolation** to 120, 180 or 240 FPS (the game still runs at 60; the frames in between
+  are interpolated). It looks smoothest when the monitor runs at that rate (120, 180 or 240 Hz); each extra frame
+  draws the scene again, so higher modes need a stronger GPU.
 - **Gamepad and keyboard** with full remapping: Xbox, PlayStation (DualSense / DualShock 4) and Nintendo Pro
   Controller.
 - **Wii Remote motion:**
@@ -71,12 +73,21 @@ The download (~250 MB) already includes the compiler and every build tool, so in
 
 **Steps**
 
-1. Download the latest release (`WarioRecomp-<version>.zip`) and unzip it to a folder, e.g. `D:\WarioRecomp`.
-2. Open `WarioLauncher.exe`. Windows may warn because it isn't signed: *More info → Run anyway*.
-3. The launcher opens on **Install**: press **Install**, then pick your disc image and the folder to extract it to.
-4. Wait while it extracts the game and builds the port on your PC (15 to 45 minutes depending on the PC); the
+1. Go to the [Releases page](https://github.com/santiagovalencia109/Wario-Land-Shake-It-Native-PC/releases)
+   and, under **Assets** of the newest version, download **`WarioRecomp-<version>.zip`** (about 250 MB). That
+   zip is all you need: the launcher is inside it.
+   - Not **Source code (zip)** / **(tar.gz)**: GitHub adds those to every release and they have no launcher.
+   - Not the separate **`WarioLauncher.exe`** either: it is only there for the launcher's automatic update and
+     can't install anything on its own.
+2. Unzip the whole zip to a folder, e.g. `D:\WarioRecomp` (right click → *Extract All*). Don't run anything from
+   inside the zip without extracting it.
+3. In that folder, open **`WarioLauncher.exe`** (next to the `Play`, `runtime` and `tools` folders). If Windows
+   hides file extensions it shows as `WarioLauncher` with the Wario icon; `WarioLauncher.exe.config` next to it is
+   only a settings file. Windows may warn because the launcher isn't signed: *More info → Run anyway*.
+4. The launcher opens on **Install**: press **Install**, then pick your disc image and the folder to extract it to.
+5. Wait while it extracts the game and builds the port on your PC (15 to 45 minutes depending on the PC); the
    progress is shown on the page.
-5. Press **PLAY**.
+6. Press **PLAY**.
 
 ## Controls
 
@@ -131,7 +142,9 @@ only the code from this repository, never any game data, and then rebuilds on yo
 (minutes) when the change only touches the runtime, or a full one (15 to 45 minutes) when the translation
 changed. Your imported game, saves and settings are kept (they are all in `Play\UserData`).
 
-You can also unzip a new release over the old folder and rebuild from **Install**.
+If you already have a version installed you don't need to download anything: accept the update in the launcher.
+From 0.2.0 on the launcher also updates itself (an older launcher is replaced and reopened when the rebuild
+finishes). You can also unzip a new release zip over the old folder and rebuild from **Install**.
 
 For maintainers: bump `version` in `version.json`, and set `quick_from` to the oldest version that can
 still use a quick rebuild (set it to the new version when the translation changes).

@@ -199,7 +199,7 @@ inline bool IsSupportedDisplayMode(std::string_view value) {
 // 240 was offered by an early build and is no longer supported; a saved 240 is
 // migrated to 180 at the parse site.
 inline bool IsSupportedFrameInterpolationFps(uint32_t value) {
-    return value == 0 || value == 120 || value == 180;
+    return value == 0 || value == 120 || value == 180 || value == 240;
 }
 
 inline std::optional<std::filesystem::path> ExecutableDirectory() {
@@ -394,7 +394,7 @@ inline void EnsureConfigFile() {
               "force_16_9 = false\n"
               "# render height = 480 x resolution_multiplier: 1.5 = 720p, 2.25 = 1080p, 4.5 = 4K, 0 = screen size\n"
               "resolution_multiplier = 2.25\n"
-              "# 0 (off) or 120\n"
+              "# 0 (off), 120, 180 or 240 (a multiple of the game's 60: 1, 2 or 3 interpolated frames)\n"
               "frame_interpolation_fps = 0\n"
               "# wait for the display when presenting: no screen tearing\n"
               "vsync = true\n"
@@ -578,9 +578,9 @@ inline RuntimeUserConfig ParseConfigDocument(const toml::value& document) {
         config.displayMode = *value;
     }
     if (auto value = FindConfigUint(document, "video", "frame_interpolation_fps")) {
-        const uint32_t migrated = *value == 240u ? 180u : *value;
-        if (IsSupportedFrameInterpolationFps(migrated)) {
-            config.frameInterpolationFps = migrated;
+        // WARIO: 240 (3 inserted frames, aurora's MaxInterpolatedFrames) is offered again.
+        if (IsSupportedFrameInterpolationFps(*value)) {
+            config.frameInterpolationFps = *value;
         }
     }
     config.metalFxSpatialUpscaling =

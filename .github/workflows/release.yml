@@ -1,0 +1,105 @@
+# Release: pushing a tag v<version> (the "version" in version.json) builds the Windows and Linux packages on
+# GitHub's machines and publishes them as a pre-release, with the launchers as separate files for the
+# launcher's self-update. Nothing from the game is built or included: every user builds the port on their PC.
+#
+#   git tag v0.3.0 && git push origin v0.3.0
+#
+# It can also be started by hand from the Actions tab (workflow_dispatch): then it only builds the packages and
+# leaves them as downloadable artifacts, without publishing a release.
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            8.0.x
+            10.0.x
+      - name: Build tools and dependencies (bundled in the package)
+        shell: powershell
+        run: |
+          & .\fw\Launcher\Prepare-PortableTools.ps1 -Destination (Join-Path $PWD 'toolchain')
+          & .\fw\Launcher\Prepare-Dependencies.ps1 -Destination (Join-Path $PWD 'fw\Dependencies')
+      - name: Launcher
+        shell: powershell
+        run: .\tools\build-launcher.ps1
+      - name: Package
+        shell: powershell
+        run: .\tools\make-package.ps1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: |
+            dist/WarioRecomp-*.zip
+            dist/WarioLauncher.exe
+          if-no-files-found: error
+
+  linux:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            8.0.x
+            10.0.x
+      - name: Launcher
+        run: bash tools/build-launcher.sh
+      - name: Package
+        run: bash tools/make-package.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux
+          path: |
+            dist/WarioRecomp-*-linux.tar.gz
+            dist/WarioLauncher-linux-x64
+          if-no-files-found: error
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [windows, linux]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          version="$(jq -r .version version.json)"
+          if [[ "$tag" != "v$version" ]]; then
+            echo "The tag $tag does not match version.json ($version)." >&2
+            exit 1
+          fi
+          {
+            jq -r .notes_en version.json
+            echo
+            echo "---"
+            echo
+            jq -r .notes_es version.json
+            echo
+            echo "**Windows:** download WarioRecomp-$version.zip, extract it and open WarioLauncher.exe inside."
+            echo "**Linux:** download WarioRecomp-$version-linux.tar.gz, extract it and open WarioLauncher inside."
+            echo "The separate WarioLauncher files are only for the launcher's automatic update."
+          } > notes.md
+          files=(dist/WarioRecomp-*.zip dist/WarioRecomp-*-linux.tar.gz dist/WarioLauncher.exe dist/WarioLauncher-linux-x64)
+          if gh release view "$tag" > /dev/null 2>&1; then
+            gh release upload "$tag" "${files[@]}" --clobber
+          else
+            gh release create "$tag" "${files[@]}" --prerelease --title "WarioRecomp $version" --notes-file notes.md
+          fi

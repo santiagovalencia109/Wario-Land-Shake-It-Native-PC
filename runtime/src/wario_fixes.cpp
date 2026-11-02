@@ -39,8 +39,11 @@ uint32_t FindGameManagerGlobal() {
 }
 }  // namespace
 
+void WarioSubDiagTick();  // wario_diag.cpp (diagnostico del submarino)
+
 // Called once per input read of player 1 (VirtualRemote::Sample), i.e. every game frame.
 void WarioRuntimeFixesTick() {
+    WarioSubDiagTick();
     static uint32_t gmGlobal = 0;
     static int rescanWait = 0;
     static std::array<uint32_t, 4> ropes{};

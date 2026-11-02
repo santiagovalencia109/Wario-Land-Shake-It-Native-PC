@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Lanzador de WarioRecomp para Windows y Linux (Avalonia, .NET 10). Se publica como un solo ejecutable
+       autocontenido por sistema (no hace falta instalar .NET): ver tools/build-launcher.ps1 / .sh. -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>disable</Nullable>
+    <AssemblyName>WarioLauncher</AssemblyName>
+    <RootNamespace>WarioLauncher</RootNamespace>
+    <Version>0.3.0</Version>
+    <Product>WarioRecomp Launcher</Product>
+    <ApplicationIcon Condition="Exists('../local-assets/wario.ico')">../local-assets/wario.ico</ApplicationIcon>
+    <BuiltInComInteropSupport>true</BuiltInComInteropSupport>
+    <InvariantGlobalization>false</InvariantGlobalization>
+    <DebugType>none</DebugType>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Avalonia" Version="11.3.0" />
+    <PackageReference Include="Avalonia.Desktop" Version="11.3.0" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="11.3.0" />
+    <PackageReference Include="Avalonia.Fonts.Inter" Version="11.3.0" />
+  </ItemGroup>
+</Project>

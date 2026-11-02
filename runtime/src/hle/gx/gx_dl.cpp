@@ -1,3 +1,4 @@
+#include <cstdint>
 extern "C" void aurora_game_vtx_state(uint8_t* desc26, uint8_t* fmt8x26x3);
 #include "gx_internal.h"
 #include "runtime_log.h"
