@@ -6,8 +6,8 @@
 
 **WarioRecomp** is an unofficial native PC port of *Wario Land: Shake It!* (Wii, 2008, US release `RWLE01`),
 by **Santiago109**. The game's PowerPC code is **statically recompiled** to C++ with
-[WiiCompiled](https://github.com/patchzyy/Wiicompiled) and runs as a regular Windows program, **not in an
-emulator**: the Wii system libraries (video, audio, controllers, disc, saves) are replaced with native code.
+[WiiCompiled](https://github.com/patchzyy/Wiicompiled) and runs as a regular Windows or Linux program, **not in
+an emulator**: the Wii system libraries (video, audio, controllers, disc, saves) are replaced with native code.
 
 <p align="center">
   <img src="screenshots/game-1.png" width="32%" alt="Wario Land: Shake It! on PC">
@@ -33,6 +33,7 @@ emulator**: the Wii system libraries (video, audio, controllers, disc, saves) ar
   follow the wider view (the mission and treasure icons are still shown in the pause menu).
 - **Windowed, borderless or exclusive fullscreen** (F11 switches in game), VSync and an FPS counter.
 - **Direct3D 12 or Vulkan** (through Aurora / Dawn).
+- **Windows and Linux** *(Linux is experimental)*.
 - **Experimental frame interpolation** to 120, 180 or 240 FPS (the game still runs at 60; the frames in between
   are interpolated). It looks smoothest when the monitor runs at that rate (120, 180 or 240 Hz); each extra frame
   draws the scene again, so higher modes need a stronger GPU.
@@ -59,7 +60,7 @@ translated code. You need **your own copy** of *Wario Land: Shake It!* (US, `RWL
 launcher reads it, checks that it is the right one (`main.dol` with SHA-256 `053BE60D…912A`) and **builds the
 port on your PC**, the same way the WiiCompiled installer does.
 
-## How to play
+## How to play (Windows)
 
 **Requirements**
 
@@ -88,6 +89,43 @@ The download (~250 MB) already includes the compiler and every build tool, so in
 5. Wait while it extracts the game and builds the port on your PC (15 to 45 minutes depending on the PC); the
    progress is shown on the page.
 6. Press **PLAY**.
+
+## How to play (Linux, experimental)
+
+On Linux the port is built with the tools of your distribution (the Windows download brings its own compiler;
+the Linux one doesn't), so there is one extra step: installing them once.
+
+**Requirements**
+
+- 64-bit Linux (x86-64) with a desktop (X11 or Wayland).
+- A graphics driver with Vulkan.
+- The same free space, RAM and disc image as on Windows.
+
+**Steps**
+
+1. Install the build tools and libraries once. On Ubuntu / Debian, open a terminal and run:
+   ```
+   sudo apt install clang cmake ninja-build pkg-config libx11-dev libxcursor-dev libxi-dev libxrandr-dev \
+     libxss-dev libxkbcommon-dev libwayland-dev wayland-protocols libegl-dev libdrm-dev libgbm-dev \
+     libasound2-dev libpulse-dev libudev-dev libdbus-1-dev libxtst-dev libxfixes-dev libpipewire-0.3-dev \
+     libvulkan-dev
+   ```
+   If something is still missing, the build says what and the command to install it.
+2. From the [Releases page](https://github.com/santiagovalencia109/Wario-Land-Shake-It-Native-PC/releases),
+   download **`WarioRecomp-<version>-linux.tar.gz`** (not *Source code*, and not the separate
+   `WarioLauncher-linux-x64`, which is only for the launcher's automatic update).
+3. Extract it, e.g. `tar -xzf WarioRecomp-<version>-linux.tar.gz -C ~/`, and open **`WarioLauncher`** inside the
+   extracted folder (double click, or `./WarioLauncher` in a terminal).
+4. Same as on Windows: **Install** → pick your disc image → wait for the build → **PLAY**.
+
+Without the launcher, from a terminal in the extracted folder:
+
+```
+tools/build-wario.sh --disc ~/path/to/game.iso    imports the disc and builds the port
+Play/WarioRecomp                                   starts the game
+```
+
+Saves, settings and the logs are in the same places as on Windows (`Play/UserData`).
 
 ## Controls
 
@@ -156,9 +194,13 @@ The launcher does all of this for you; by hand it is:
 ```
 Build-WarioRecomp.cmd         downloads missing tools, translates the game, builds it and runs a 60 s test
 Quick-Rebuild.cmd             rebuilds without translating or downloading again
-Build-Launcher.cmd            builds the launcher (.NET Framework 4.8)
+Build-Launcher.cmd            builds the launcher (.NET 10 SDK)
 Make-Release.cmd              makes dist\WarioRecomp-<version>.zip (with nothing from the game)
 ```
+
+On Linux: `tools/build-wario.sh` (the port; `--skip-translate` for the quick rebuild), `tools/build-launcher.sh`
+and `tools/make-package.sh` (dist/WarioRecomp-<version>-linux.tar.gz). Pushing a `v<version>` tag builds both
+packages on GitHub Actions and publishes the release (`.github/workflows/release.yml`).
 
 The first time, point the build at your game: import it in the launcher, or run
 `tools\build-wario.ps1 -GameData D:\path\to\DATA` (the folder with `sys\main.dol`).
@@ -170,7 +212,8 @@ The first time, point the build at your game: import it in the launcher, or run
 | `runtime/` | The runtime adapted to Wario (adapted from WiiCompiled's runtime) |
 | `aurora/` | Aurora, the Wii GX graphics layer (adapted from WiiCompiled's copy) |
 | `tools/` | Build scripts (port, launcher, release package) |
-| `launcher/` | The launcher (C# WinForms) |
+| `launcher-avalonia/` | The launcher (C# / Avalonia, Windows and Linux) |
+| `launcher/` | The previous launcher (C# WinForms, Windows only; up to 0.2.0) |
 | `local-assets/` | Launcher icon and header image (fan art by Dreaminerryday) |
 | `screenshots/` | The images in this README |
 
@@ -180,6 +223,7 @@ Working: boot, intro (and skipping it), menus, saves (create, load, save), the w
 far, audio, 16:9, gamepad and keyboard. Still to test or to do:
 
 - Playing through the whole game (bosses, every level and the 12 story movies).
+- Linux: more distributions and graphics drivers, and performance on native Linux.
 - The DualSense accelerometer, and shaking everywhere the game asks for it.
 - Separate music, sound effects and voice volumes.
 - An HD texture pack.
