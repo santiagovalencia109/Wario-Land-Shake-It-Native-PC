@@ -25,42 +25,7 @@
 #include "runtime_config.h"
 #include "display_settings.h"
 
-#include <SDL3/SDL_keyboard.h>
-
 #include <cstdlib>
-
-// WARIO (diagnostico, WARIO_WIDE_DEBUG en el entorno): apagar en vivo cada parte del 16:9 completo para
-// encontrar la que bloquea el final de los niveles del submarino. F5 = ampliacion de la zona de objetos
-// (culling), F6 = anchos de vista de la camara, F7 = bordes de pantalla (fn_800CCC60/E8) y prueba "en pantalla" (fn_80090424), F8 = registrar el
-// estado (camara, valores). Cada cambio queda en el registro como [wide].
-static bool g_wideCull = true, g_wideView = true, g_wideEdge = true;
-static void WideDebugKeys() {
-    static const bool on = std::getenv("WARIO_WIDE_DEBUG") != nullptr;
-    if (!on) return;
-    static bool was[4] = {};
-    int n = 0;
-    const bool* ks = SDL_GetKeyboardState(&n);
-    if (ks == nullptr) return;
-    const SDL_Scancode keys[4] = {SDL_SCANCODE_F5, SDL_SCANCODE_F6, SDL_SCANCODE_F7, SDL_SCANCODE_F8};
-    for (int i = 0; i < 4; ++i) {
-        const bool down = keys[i] < n && ks[keys[i]];
-        const bool pressed = down && !was[i];
-        was[i] = down;
-        if (!pressed) continue;
-        if (i == 0) g_wideCull = !g_wideCull;
-        if (i == 1) g_wideView = !g_wideView;
-        if (i == 2) g_wideEdge = !g_wideEdge;
-        const uint32_t manager = Memory::Read32(0x8061DB68u);
-        const uint32_t camera = (manager != 0 && Memory::Contains(manager + 0xA8u, 0x60)) ? Memory::Read32(manager + 0xA8u) : 0u;
-        const bool camOk = camera != 0 && Memory::Contains(camera + 0x38u, 0x20);
-        RT_LOGF(RT_TAG_GX, "[wide] F%d: culling %s, vista %s, bordes %s | camara x %.3f y %.3f zoom %.3f | cull %.3f vistas %.3f %.3f %.3f %.3f\n",
-                5 + i, g_wideCull ? "16:9" : "4:3", g_wideView ? "16:9" : "4:3", g_wideEdge ? "16:9" : "4:3",
-                camOk ? Memory::ReadFloat32(camera + 0x38u) : 0.f, camOk ? Memory::ReadFloat32(camera + 0x3Cu) : 0.f,
-                camOk ? Memory::ReadFloat32(camera + 0x54u) : 0.f, Memory::ReadFloat32(0x8061AA90u),
-                Memory::ReadFloat32(0x80628BACu), Memory::ReadFloat32(0x806282DCu), Memory::ReadFloat32(0x80627D2Cu),
-                Memory::ReadFloat32(0x8062890Cu));
-    }
-}
 
 bool WarioFullWide() {
     static const bool configured =
@@ -76,12 +41,11 @@ void WarioWideOnScreenFactor(bool wide);
 
 void WarioWideApplyGlobals() {
     if (!WarioFullWide()) return;
-    WideDebugKeys();
-    WarioWideOnScreenFactor(g_wideEdge);
+    WarioWideOnScreenFactor(true);
     // fn_80051E28 culls the stage's objects against +-4 x +-3 units times this factor (1.0, read
     // only there).
     constexpr uint32_t kStageCullScale = 0x8061AA90u;
-    const float cullWant = g_wideCull ? 4.0f / 3.0f : 1.0f;
+    constexpr float cullWant = 4.0f / 3.0f;
     if (Memory::ReadFloat32(kStageCullScale) != cullWant) Memory::WriteFloat32(kStageCullScale, cullWant);
     // "Screen width" globals (k x 4.0, set by static constructors) that the camera code passes to
     // fn_8004C654 to find where it must stop at a room's edges: fn_802864F8 & co. (0x80628BAC),
@@ -94,7 +58,7 @@ void WarioWideApplyGlobals() {
         const float cur = Memory::ReadFloat32(kViewWidths[i]);
         if (baseWidth[i] == 0.f && cur > 0.f) baseWidth[i] = cur;
         if (baseWidth[i] <= 0.f) continue;
-        const float want = g_wideView ? baseWidth[i] * 4.0f / 3.0f : baseWidth[i];
+        const float want = baseWidth[i] * 4.0f / 3.0f;
         if ((cur == baseWidth[i] || cur == baseWidth[i] * 4.0f / 3.0f) && cur != want) {
             Memory::WriteFloat32(kViewWidths[i], want);
             if (kViewWidths[i] == 0x80628BB4u) {  // the cached wall offsets are recomputed on next use
@@ -124,7 +88,7 @@ float ScreenEdgeX(uint32_t obj, uint32_t halfConstAddr) {
     const float zoom = (camera != 0 && Memory::Contains(camera + 0x54u, 4)) ? Memory::ReadFloat32(camera + 0x54u) : 1.0f;
     const float x = camera != 0 ? Memory::ReadFloat32(camera + 0x38u) : Memory::ReadFloat32(obj + 0x54u);
     float half = Memory::ReadFloat32(halfConstAddr);
-    if (WarioFullWide() && g_wideEdge) half *= 4.0f / 3.0f;
+    if (WarioFullWide()) half *= 4.0f / 3.0f;
     return half * zoom + x;
 }
 
