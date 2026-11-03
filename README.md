@@ -105,10 +105,11 @@ the Linux one doesn't), so there is one extra step: installing them once.
 
 1. Install the build tools and libraries once. On Ubuntu / Debian, open a terminal and run:
    ```
-   sudo apt install clang cmake ninja-build pkg-config libx11-dev libxcursor-dev libxi-dev libxrandr-dev \
-     libxss-dev libxkbcommon-dev libwayland-dev wayland-protocols libegl-dev libdrm-dev libgbm-dev \
-     libasound2-dev libpulse-dev libudev-dev libdbus-1-dev libxtst-dev libxfixes-dev libpipewire-0.3-dev \
-     libvulkan-dev
+   sudo apt install build-essential clang cmake ninja-build pkg-config git curl ca-certificates \
+     libx11-dev libxcursor-dev libxi-dev libxrandr-dev libxss-dev libxkbcommon-dev libwayland-dev \
+     wayland-protocols libegl-dev libdrm-dev libgbm-dev libasound2-dev libpulse-dev libudev-dev \
+     libdbus-1-dev libxtst-dev libxfixes-dev libpipewire-0.3-dev libvulkan-dev libsqlite3-dev libpng-dev \
+     libfreetype-dev zlib1g-dev
    ```
    If something is still missing, the build says what and the command to install it.
 2. From the [Releases page](https://github.com/santiagovalencia109/Wario-Land-Shake-It-Native-PC/releases),
@@ -126,6 +127,15 @@ Play/WarioRecomp                                   starts the game
 ```
 
 Saves, settings and the logs are in the same places as on Windows (`Play/UserData`).
+
+**Steam Deck (SteamOS)**
+
+Use the Linux download in **Desktop Mode**, not the Windows one through Proton: the Windows build runs on
+PowerShell and its own compiler, which don't work under Proton/Wine. SteamOS can't install the build tools
+(its system is read-only), so step 1 is skipped: the build notices it and runs by itself inside a
+[distrobox](https://distrobox.it) container with Ubuntu 24.04 (distrobox comes with SteamOS 3.5 and later). The
+first build downloads about 1 GB more for that container and needs internet. After that, **PLAY** works as usual,
+and to play in Game Mode add `Play/WarioRecomp` as a non-Steam game (Steam → *Add a Non-Steam Game*).
 
 ## Controls
 

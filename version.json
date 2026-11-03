@@ -1,7 +1,7 @@
 {
-  "version": "0.3.0",
+  "version": "0.3.1",
   "quick_from": "0.2.0",
   "launcher": "0.3.0",
-  "notes_en": "New launcher, now for Windows and Linux: same options, scrollable pages, and it reopens by itself after updating. Linux (experimental): the port can be built and played on Linux; download the -linux.tar.gz package. New frame interpolation modes: 180 and 240 FPS. Full 16:9 in the submarine levels: the sub can use the whole screen, enemies and torpedoes no longer appear or vanish at the old 4:3 edge, and the level end no longer gets stuck.",
-  "notes_es": "Nuevo lanzador, ahora para Windows y Linux: las mismas opciones, paginas con desplazamiento y se vuelve a abrir solo despues de actualizar. Linux (experimental): el port se puede compilar y jugar en Linux; descarga el paquete -linux.tar.gz. Nuevos modos de interpolacion de cuadros: 180 y 240 FPS. 16:9 completo en los niveles del submarino: el submarino puede usar toda la pantalla, los enemigos y torpedos ya no aparecen ni desaparecen en el borde 4:3 de antes y el final del nivel ya no se queda bloqueado."
+  "notes_en": "Steam Deck (SteamOS) and other read-only Linux systems: the build no longer stops at \"missing tools or libraries\"; it now runs by itself in a distrobox container (Ubuntu 24.04), which SteamOS includes. Use the Linux download in Desktop Mode (the Windows download can't build under Proton). Linux: the build also checks four libraries it needs (sqlite3, libpng, freetype, zlib), and the error now says exactly what is missing.",
+  "notes_es": "Steam Deck (SteamOS) y otros Linux de solo lectura: la compilacion ya no se detiene en \"faltan herramientas o librerias\"; ahora se hace sola dentro de un contenedor distrobox (Ubuntu 24.04), que SteamOS ya trae. Usa la descarga de Linux en el modo escritorio (la de Windows no puede compilar con Proton). Linux: la compilacion tambien revisa cuatro librerias que necesita (sqlite3, libpng, freetype, zlib) y el error ahora dice exactamente que falta."
 }
